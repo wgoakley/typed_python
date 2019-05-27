@@ -30,6 +30,3 @@ redis = "*"
 requests = "*"
 websockets = "*"
 nativepython = {editable = true,path = "."}
-
-[requires]
-python_version = "3.6"

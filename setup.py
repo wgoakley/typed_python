@@ -67,6 +67,16 @@ ext_modules = [
 ]
 
 INSTALL_REQUIRES = [line.strip() for line in open('requirements.txt')]
+# setuptools.find_packages() returns: [
+#     'object_database', 'nativepython', 'typed_python',
+#     'object_database.frontends', 'object_database.web',
+#     'object_database.service_manager', 'object_database.web.html',
+#     'object_database.web.cells', 'object_database.service_manager.aws',
+#    'nativepython.tests', 'nativepython.type_wrappers',
+#    'typed_python.direct_types', 'typed_python.dummy_test_module'
+#  ]
+# packages = setuptools.find_packages()
+packages = ["nativepython", "object_database", "typed_python"]
 
 setuptools.setup(
     name='nativepython',
@@ -75,7 +85,7 @@ setuptools.setup(
     author='Braxton Mckee',
     author_email='braxton.mckee@gmail.com',
     url='https://github.com/aprioriinvestments/nativepython',
-    packages=setuptools.find_packages(),
+    packages=packages,
     cmdclass={'build_ext': NumpyBuildExtension},
     ext_modules=ext_modules,
     setup_requires=[
