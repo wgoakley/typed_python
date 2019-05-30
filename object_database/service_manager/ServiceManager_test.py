@@ -700,11 +700,15 @@ class ServiceManagerTest(ServiceManagerTestCommon, unittest.TestCase):
         emptyThroughputs = [self.measureThroughput(1.0)]
         fullThroughputs = []
 
+        timeout = 60 if os.environ.get('TRAVIS_CI', None) is not None else 20
+        logger = logging.getLogger(__name__)
+        logger.info(f"timeout={timeout}")
+
         for i in range(2):
             with self.database.transaction():
                 ServiceManager.startService("TestService", 20)
 
-            self.waitForCount(20)
+            self.waitForCount(timeout)
 
             fullThroughputs.append(self.measureThroughput(1.0))
 
