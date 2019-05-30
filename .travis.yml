@@ -27,5 +27,5 @@ after_failure:
 script:
   - make testcert.cert
   - make lint
-  - ./test.py -s
+  - ./test.py -s -v --filter=test_throughput_while_adjusting_servicecount
   - pipenv check
