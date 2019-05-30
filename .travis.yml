@@ -29,7 +29,7 @@ script:
   - make testcert.cert
   - make lint
   # - coverage run ./test.py -s
-  - coverage run ./test.py -s --filter=test_throughput_while_adjusting_servicecount
+  - ./test.py -s --filter=test_throughput_while_adjusting_servicecount -v
   - pipenv check
 
 # Push the results back to codecov
