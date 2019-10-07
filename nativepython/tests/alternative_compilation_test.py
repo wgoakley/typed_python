@@ -542,8 +542,8 @@ class TestAlternativeCompilation(unittest.TestCase):
 
         A0 = Alternative("A0", a={}, b={},
                          __int__=lambda self: 123,
-                        __float__=lambda self: 1234.5
-                        )
+                         __float__=lambda self: 1234.5
+                         )
 
         A = Alternative("A", a={'a': int}, b={'b': str},
                         __int__=lambda self: 123,
@@ -566,7 +566,6 @@ class TestAlternativeCompilation(unittest.TestCase):
             c_g(A.a())
         with self.assertRaises(TypeError):
             c_g(A0.a())
-
 
     def test_compile_alternative_float_methods(self):
         # if __float__ is defined, then floor() and ceil() are based off this conversion,
