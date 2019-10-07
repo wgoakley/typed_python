@@ -538,6 +538,36 @@ class TestAlternativeCompilation(unittest.TestCase):
             with self.assertRaises(TypeError):
                 c_getattr2(v)
 
+    def test_compile_alternative_float_conv(self):
+
+        A0 = Alternative("A0", a={}, b={},
+                         __int__=lambda self: 123,
+                        __float__=lambda self: 1234.5
+                        )
+
+        A = Alternative("A", a={'a': int}, b={'b': str},
+                        __int__=lambda self: 123,
+                        __float__=lambda self: 1234.5
+                        )
+
+        def f(x: float):
+            return x
+
+        def g(x: int):
+            return x
+
+        c_f = Compiled(f)
+        c_g = Compiled(g)
+        with self.assertRaises(TypeError):
+            c_f(A.a())
+        with self.assertRaises(TypeError):
+            c_f(A0.a())
+        with self.assertRaises(TypeError):
+            c_g(A.a())
+        with self.assertRaises(TypeError):
+            c_g(A0.a())
+
+
     def test_compile_alternative_float_methods(self):
         # if __float__ is defined, then floor() and ceil() are based off this conversion,
         # when __floor__ and __ceil__ are not defined

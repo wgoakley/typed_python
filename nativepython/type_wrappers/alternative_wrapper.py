@@ -88,13 +88,6 @@ class SimpleAlternativeWrapper(Wrapper):
                     context.pushEffect(targetVal.expr.store(context.constant(True)))
                 return context.constant(True)
 
-        # seem to need this conversion for floor() and ceil() to behave the same as interpreted code
-        if isinstance(target_type, FloatWrapper):
-            y = self.generate_method_call(context, "__float__", (e,))
-            if y is not None:
-                context.pushEffect(targetVal.expr.store(y.convert_to_type(target_type)))
-                return context.constant(True)
-
         return super().convert_to_type_with_target(context, e, targetVal, explicit)
 
     def convert_cast(self, context, e, target_type):
@@ -161,10 +154,10 @@ class SimpleAlternativeWrapper(Wrapper):
                 or context.pushPod(float, runtime_functions.trunc_float64.call(expr.toFloat64().nonref_expr))
         if f is floor:
             return self.generate_method_call(context, "__floor__", (expr,)) \
-                or context.pushPod(float, runtime_functions.floor_float64.call(expr.toFloat64().nonref_expr))
+                or context.pushPod(float, runtime_functions.floor_float64.call(expr.convert_cast(float).nonref_expr))
         if f is ceil:
             return self.generate_method_call(context, "__ceil__", (expr,)) \
-                or context.pushPod(float, runtime_functions.ceil_float64.call(expr.toFloat64().nonref_expr))
+                or context.pushPod(float, runtime_functions.ceil_float64.call(expr.convert_cast(float).nonref_expr))
         if f is complex:
             return self.generate_method_call(context, "__complex__", (expr, ))
         if f is dir:
@@ -273,7 +266,6 @@ class ConcreteSimpleAlternativeWrapper(Wrapper):
         assert targetVal.isReference
 
         target_type = targetVal.expr_type
-
         if target_type == typeWrapper(self.alternativeType):
             targetVal.convert_copy_initialize(e.changeType(target_type))
             return context.constant(True)
@@ -288,13 +280,6 @@ class ConcreteSimpleAlternativeWrapper(Wrapper):
                     context.pushEffect(targetVal.expr.store(y.convert_to_type(int).nonref_expr.neq(0)))
                 else:
                     context.pushEffect(targetVal.expr.store(context.constant(True)))
-                return context.constant(True)
-
-        # seem to need this conversion for floor() and ceil() to behave the same as interpreted code
-        if isinstance(target_type, FloatWrapper):
-            y = self.generate_method_call(context, "__float__", (e,))
-            if y is not None:
-                context.pushEffect(targetVal.expr.store(y.convert_to_type(target_type)))
                 return context.constant(True)
 
         return super().convert_to_type_with_target(context, e, targetVal, explicit)
@@ -453,13 +438,6 @@ class AlternativeWrapper(RefcountedWrapper):
                     context.pushEffect(targetVal.expr.store(context.constant(True)))
                 return context.constant(True)
 
-        # seem to need this conversion for floor() and ceil() to behave the same as interpreted code
-        if isinstance(target_type, FloatWrapper):
-            y = self.generate_method_call(context, "__float__", (e,))
-            if y is not None:
-                context.pushEffect(targetVal.expr.store(y.convert_to_type(target_type)))
-                return context.constant(True)
-
         return super().convert_to_type_with_target(context, e, targetVal, explicit)
 
     def convert_cast(self, context, e, target_type):
@@ -522,10 +500,10 @@ class AlternativeWrapper(RefcountedWrapper):
                 or context.pushPod(float, runtime_functions.trunc_float64.call(expr.toFloat64().nonref_expr))
         if f is floor:
             return self.generate_method_call(context, "__floor__", (expr,)) \
-                or context.pushPod(float, runtime_functions.floor_float64.call(expr.toFloat64().nonref_expr))
+                or context.pushPod(float, runtime_functions.floor_float64.call(expr.convert_cast(float).nonref_expr))
         if f is ceil:
             return self.generate_method_call(context, "__ceil__", (expr,)) \
-                or context.pushPod(float, runtime_functions.ceil_float64.call(expr.toFloat64().nonref_expr))
+                or context.pushPod(float, runtime_functions.ceil_float64.call(expr.convert_cast(float).nonref_expr))
         if f is complex:
             return self.generate_method_call(context, "__complex__", (expr, ))
         if f is dir:
@@ -640,7 +618,6 @@ class ConcreteAlternativeWrapper(RefcountedWrapper):
         assert targetVal.isReference
 
         target_type = targetVal.expr_type
-
         if target_type == typeWrapper(self.alternativeType):
             targetVal.convert_copy_initialize(e.changeType(target_type))
             return context.constant(True)
@@ -657,14 +634,20 @@ class ConcreteAlternativeWrapper(RefcountedWrapper):
                     context.pushEffect(targetVal.expr.store(context.constant(True)))
                 return context.constant(True)
 
-        # seem to need this conversion for floor() and ceil() to behave the same as interpreted code
+        return super().convert_to_type_with_target(context, e, targetVal, explicit)
+
+    def convert_cast(self, context, e, target_type):
+        if isinstance(target_type, IntWrapper):
+            y = self.generate_method_call(context, "__int__", (e,))
+            if y is not None:
+                return y.convert_to_type(target_type)
+
         if isinstance(target_type, FloatWrapper):
             y = self.generate_method_call(context, "__float__", (e,))
             if y is not None:
-                context.pushEffect(targetVal.expr.store(y.convert_to_type(target_type)))
-                return context.constant(True)
+                return y.convert_to_type(target_type)
 
-        return super().convert_to_type_with_target(context, e, targetVal, explicit)
+        return super().convert_cast(context, e, target_type)
 
     def convert_type_call(self, context, typeInst, args, kwargs):
         tupletype = self.typeRepresentation.ElementType
