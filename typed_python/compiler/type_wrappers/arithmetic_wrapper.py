@@ -348,7 +348,7 @@ class IntWrapper(ArithmeticTypeWrapper):
         if op.matches.Mod:
             with context.ifelse(right.nonref_expr) as (ifTrue, ifFalse):
                 with ifFalse:
-                    context.pushException(ZeroDivisionError)
+                    context.pushException(ZeroDivisionError, "division by zero")
 
             if left.expr_type.typeRepresentation.IsSignedInt:
                 return context.pushPod(
@@ -409,7 +409,7 @@ class IntWrapper(ArithmeticTypeWrapper):
             # unsigned int
             with context.ifelse(right.nonref_expr) as (ifTrue, ifFalse):
                 with ifFalse:
-                    context.pushException(ZeroDivisionError)
+                    context.pushException(ZeroDivisionError, "division by zero")
 
             return context.pushPod(
                 self,
@@ -705,7 +705,7 @@ class FloatWrapper(ArithmeticTypeWrapper):
 
             with context.ifelse(right.nonref_expr) as (ifTrue, ifFalse):
                 with ifFalse:
-                    context.pushException(ZeroDivisionError)
+                    context.pushException(ZeroDivisionError, "division by zero")
 
             return context.pushPod(
                 self,
@@ -715,7 +715,7 @@ class FloatWrapper(ArithmeticTypeWrapper):
         if op.matches.Div:
             with context.ifelse(right.nonref_expr) as (ifTrue, ifFalse):
                 with ifFalse:
-                    context.pushException(ZeroDivisionError)
+                    context.pushException(ZeroDivisionError, "division by zero")
 
             return context.pushPod(
                 self,

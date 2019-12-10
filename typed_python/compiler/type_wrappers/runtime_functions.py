@@ -104,6 +104,22 @@ initialize_exception = externalCallTarget(
     Void.pointer()
 )
 
+clear_exception = externalCallTarget(
+    "np_clear_exception",
+    Void
+)
+
+match_exception = externalCallTarget(
+    "np_match_exception",
+    Bool,
+    Void.pointer()
+)
+
+fetch_exception = externalCallTarget(
+    "np_fetch_exception",
+    Void.pointer()
+)
+
 builtin_pyobj_by_name = externalCallTarget(
     "np_builtin_pyobj_by_name",
     Void.pointer(),

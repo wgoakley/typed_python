@@ -15,12 +15,24 @@
 from typed_python import Class, Dict, ConstDict, TupleOf, ListOf, Member, OneOf, Int64, UInt64, Int16, \
     Float32, Float64, String, Final, PointerTo, makeNamedTuple, Compiled, Function
 import typed_python._types as _types
-from typed_python.compiler.runtime import Entrypoint
+from typed_python.compiler.runtime import Entrypoint, Runtime
 from flaky import flaky
 import unittest
 import time
 import psutil
 from math import trunc, floor, ceil
+import pytest
+
+
+def resultType(f, **kwargs):
+    return Runtime.singleton().resultTypes(f, kwargs)
+
+
+def result_or_exception(f, *p):
+    try:
+        return f(*p)
+    except Exception as e:
+        return type(e)
 
 
 class AClass(Class):
@@ -1299,12 +1311,6 @@ class TestClassCompilationCompilation(unittest.TestCase):
 
     def test_compile_class_comparison_defaults(self):
 
-        def result_or_exception(f, *p):
-            try:
-                return f(*p)
-            except Exception as e:
-                return type(e)
-
         class C(Class, Final):
             i = Member(int)
             s = Member(str)
@@ -1716,3 +1722,122 @@ class TestClassCompilationCompilation(unittest.TestCase):
             self.compileCheck(lambda: T().f(x=1, y='2'))
             self.compileCheck(lambda: T().f(1, y='2'))
             self.compileCheck(lambda: T().f(1, y='2'))
+
+    def test_try(self):
+        def f0(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            finally:
+                ret += "finally"
+            return ret
+
+        def f1(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except:  # noqa: E722
+                raise NotImplementedError("custom")
+                ret += "catch "
+            finally:
+                ret += "finally"
+            return ret
+
+        def f2(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except Exception:
+                ret += "catch "
+            finally:
+                ret += "finally"
+            return ret
+
+        def f3(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except Exception:
+                ret += "catch "
+            return ret
+
+        def f4(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+                if x == 1:
+                    ret += x
+            except ZeroDivisionError as ex:
+                ret += "catch " + str(type(ex)) + " " + str(ex) + " "
+            except TypeError as ex:
+                ret += "catch2 " + str(type(ex)) + " "
+                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
+                # TODO: there are variations between interpreted and compiled code in the string representations of errors
+            except Exception as ex:
+                ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
+            finally:
+                ret += "finally"
+            return ret
+
+        def f5(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+                if x == 1:
+                    ret += x
+            except ArithmeticError as ex:
+                ret += "catch " + " " + str(ex) + " "
+                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
+                # TODO: the compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError
+            except TypeError as ex:
+                ret += "catch2 " + str(type(ex)) + " "
+                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
+                # TODO: there are variations between interpreted and compiled code in the string representations of errors
+            except Exception as ex:
+                ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
+            finally:
+                ret += "finally"
+                # TODO: in compiled code, ex is still usable here!  ex does not have correct scope!
+            return ret
+
+        # TODO: support finally in situation where control flow exits try block
+        def f6(x: int) -> str:
+            ret = "start "
+            i = 0
+            while 1:
+                ret += str(i)
+                i += 1
+                if i > x:
+                    try:
+                        break
+                    finally:
+                        ret += "finally"
+            return ret
+
+        for f in [f0, f1, f2, f3, f4, f5]:
+            for v in [1, 0]:
+                r1 = result_or_exception(f, v)
+                r2 = result_or_exception(Compiled(f), v)
+                self.assertEqual(r1, r2)
+
+    @pytest.mark.skip(reason="not supported")
+    def test_context_manager(self):
+
+        class ConMan(Class, Final):
+            open = Member(int)
+
+            def __enter__(self):
+                self.open = 10
+                return "enter"
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self.open = 100
+
+        def f():
+            context_manager = ConMan()
+            ret = context_manager.open
+            with context_manager:
+                ret += context_manager.open
+            return ret + context_manager.open
+
+        f()
