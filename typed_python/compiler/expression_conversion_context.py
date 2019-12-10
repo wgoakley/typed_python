@@ -97,6 +97,18 @@ class ExpressionConversionContext(object):
             )
         )
 
+    def fetchExceptionObject(self):
+        """Get a TypedExpression that represents the currently raised exception (as an object typed expression)
+        Don't generate unless you know there is an exception.
+        """
+        return self.push(
+            object,
+            lambda oExpr:
+            oExpr.expr.store(
+                runtime_functions.fetch_exception.call().cast(oExpr.expr_type.getNativeLayoutType())
+            )
+        )
+
     def constant(self, x):
         if isinstance(x, str):
             return typed_python.compiler.type_wrappers.string_wrapper.StringWrapper().constant(self, x)

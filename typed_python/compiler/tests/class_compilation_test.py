@@ -21,6 +21,7 @@ import unittest
 import time
 import psutil
 from math import trunc, floor, ceil
+import pytest
 
 
 def Compiled(f):
@@ -30,6 +31,13 @@ def Compiled(f):
 
 def resultType(f, **kwargs):
     return Runtime.singleton().resultTypes(f, kwargs)
+
+
+def result_or_exception(f, *p):
+    try:
+        return f(*p)
+    except Exception as e:
+        return type(e)
 
 
 class AClass(Class):
@@ -1296,12 +1304,6 @@ class TestClassCompilationCompilation(unittest.TestCase):
 
     def test_compile_class_comparison_defaults(self):
 
-        def result_or_exception(f, *p):
-            try:
-                return f(*p)
-            except Exception as e:
-                return type(e)
-
         class C(Class, Final):
             i = Member(int)
             s = Member(str)
@@ -1578,3 +1580,81 @@ class TestClassCompilationCompilation(unittest.TestCase):
         v = ClassWithoutInplaceOp(s="start")
         r2 = Compiled(inplace)(v)
         self.assertEqual(r2.s, expected.s)
+
+    # @pytest.mark.skip(reason="not supported")
+    def test_try(self):
+        def f0(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            finally:
+                ret += "finally"
+            return ret
+
+        def f1(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except:  # noqa: E722
+                raise NotImplementedError()
+                ret += "catch "
+            finally:
+                ret += "finally"
+            return ret
+
+        def f2(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except Exception:
+                ret += "catch "
+            finally:
+                ret += "finally"
+            return ret
+
+        def f3(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except Exception:
+                ret += "catch "
+            return ret
+
+        def f4(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except Exception as ex:
+                ret += "catch " + str(ex) + " "
+            finally:
+                ret += "finally"
+            return ret
+
+        # TODO: doesn't work for f4
+        for f in [f0, f1, f2, f3]:
+            for v in [1, 0]:
+                r1 = result_or_exception(f, v)
+                r2 = result_or_exception(Compiled(f), v)
+                self.assertEqual(r1, r2)
+
+    @pytest.mark.skip(reason="not supported")
+    def test_context_manager(self):
+
+        class ConMan(Class, Final):
+            open = Member(int)
+
+            def __enter__(self):
+                self.open = 10
+                return "enter"
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self.open = 100
+
+        def f():
+            context_manager = ConMan()
+            ret = context_manager.open
+            with context_manager:
+                ret += context_manager.open
+            return ret + context_manager.open
+
+        f()

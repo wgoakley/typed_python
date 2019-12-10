@@ -21,7 +21,9 @@ from typed_python.compiler.python_ast_analysis import (
 )
 
 import typed_python.compiler
+import typed_python.compiler.type_wrappers.runtime_functions as runtime_functions
 import typed_python.compiler.native_ast as native_ast
+from typed_python.compiler.native_ast import VoidPtr
 from typed_python.compiler.expression_conversion_context import ExpressionConversionContext
 from typed_python.compiler.function_stack_state import FunctionStackState
 from typed_python.compiler.type_wrappers.none_wrapper import NoneWrapper
@@ -755,7 +757,45 @@ class FunctionConversionContext(object):
                     )
 
         if ast.matches.Try:
-            raise NotImplementedError()
+            exc_varname = "exc." + str(ast.line_number)
+            self.variablesAssigned.add(exc_varname)
+
+            subcontext = ExpressionConversionContext(self, variableStates)
+            body, body_returns = self.convert_statement_list_ast(ast.body, variableStates)
+            subcontext.pushEffect(body)
+
+            if len(ast.handlers) > 0:
+                if ast.handlers[0].name is not None:
+                    self.assignToLocalVariable(ast.handlers[0].name, subcontext.fetchExceptionObject(), variableStates)
+
+                handler, handler_returns = self.convert_statement_list_ast(ast.handlers[0].body, variableStates)
+                if ast.handlers[0].name is None:
+                    handler = runtime_functions.clear_exception.call() >> handler
+            else:
+                handler = None
+                handler_returns = False
+
+            final_context = ExpressionConversionContext(self, variableStates)
+            if ast.finalbody is not None:
+                final, final_returns = self.convert_statement_list_ast(ast.finalbody, variableStates)
+                final_context.pushEffect(final)
+            else:
+                final = None
+                final_returns = False
+
+            if handler is not None:
+                complete = native_ast.Expression.TryCatch(
+                    expr=subcontext.finalize(None, exceptionsTakeFrom=ast),
+                    varname=exc_varname,
+                    handler=handler
+                )
+            else:
+                complete = subcontext.finalize(None, exceptionsTakeFrom=ast)
+
+            if final:
+                complete = complete >> final_context.finalize(None, exceptionsTakeFrom=ast)
+
+            return (complete, body_returns or handler_returns or final_returns)
 
         if ast.matches.For:
             if not ast.target.matches.Name:
@@ -869,7 +909,7 @@ class FunctionConversionContext(object):
             return exprs, True
 
         if ast.matches.With:
-            assert len(ast.items) == 1 and ast.items[0].optional_vars is None
+            assert len(ast.items) == 1
 
             expr_context = ExpressionConversionContext(self, variableStates)
 
@@ -883,23 +923,36 @@ class FunctionConversionContext(object):
             if withResponse is None:
                 return expr_context.finalize(None, exceptionsTakeFrom=ast), False
 
+            if ast.items[0].optional_vars is not None:
+                self.assignToLocalVariable(ast.items[0].optional_vars.id, withResponse, variableStates)
+
             true, true_returns = self.convert_statement_list_ast(ast.body, variableStates)
 
             exit_context = ExpressionConversionContext(self, variableStates)
+            # a001 = exit_context.pushLet(str, exit_context.constant("a").expr, true)
 
             arg.changeContext(exit_context).convert_context_manager_exit(
                 [exit_context.constant(None) for _ in range(3)]
+                # [a001, a001, a001]
             )
+            # with cond_context.ifelse(is_populated.nonref_expr) as (if_true, if_false):
+            #     with if_true:
+            #         runtime_functions.clear_exception.call()
 
-            return (
-                native_ast.Expression.Finally(
-                    expr=expr_context.finalize(true, exceptionsTakeFrom=ast),
-                    teardowns=[native_ast.Teardown.Always(
-                        expr=exit_context.finalize(None, exceptionsTakeFrom=ast)
-                    )]
-                ),
-                true_returns
+            expr = native_ast.Expression.Finally(
+                expr=expr_context.finalize(true, exceptionsTakeFrom=ast),
+                teardowns=[native_ast.Teardown.Always(expr=exit_context.finalize(None, exceptionsTakeFrom=ast))]
             )
+            expr = native_ast.Expression.TryCatch(
+                expr=expr,
+                varname="x",
+                handler=runtime_functions.fetch_exception.call(
+                    native_ast.const_uint64_expr(0).cast(VoidPtr),
+                    native_ast.const_uint64_expr(0).cast(VoidPtr),
+                    native_ast.const_uint64_expr(0).cast(VoidPtr)
+                )
+            )
+            return (expr, true_returns)
 
         if ast.matches.Assert:
             expr_context = ExpressionConversionContext(self, variableStates)

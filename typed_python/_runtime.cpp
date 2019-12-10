@@ -177,6 +177,30 @@ extern "C" {
         PyErr_Restore((PyObject*)incref(layout->pyObj->ob_type), incref(layout->pyObj), nullptr);
     }
 
+    void np_clear_exception() {
+        PyEnsureGilAcquired getTheGil;
+        PyErr_Clear();
+    }
+
+    PythonObjectOfType::layout_type* np_fetch_exception() {
+        PyObject* type;
+        PyObject* value;
+        PyObject* traceback;
+        PyEnsureGilAcquired getTheGil;
+        PyErr_Fetch(&type, &value, &traceback);
+        PyErr_Clear();
+        PythonObjectOfType::layout_type* ret = PythonObjectOfType::createLayout(incref(value));
+        return ret;
+    }
+
+    void np_fetch_exception2(PyObject** ptype0, PyObject** pvalue0, PyObject** ptraceback0) {
+        PyEnsureGilAcquired getTheGil;
+        PyObject* type;
+        PyObject* value;
+        PyObject* traceback;
+        PyErr_Fetch(&type, &value, &traceback);
+    }
+
     void np_add_traceback(const char* funcname, const char* filename, int lineno) {
         PyEnsureGilAcquired getTheGil;
 
