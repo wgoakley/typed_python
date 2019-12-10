@@ -1560,7 +1560,7 @@ class TestAlternativeCompilation(unittest.TestCase):
         r2 = Compiled(inplace)(v)
         self.assertEqual(r2, expected)
 
-    # @pytest.mark.skip(reason="not supported")
+    @pytest.mark.skip(reason="not supported")
     def test_context_manager(self):
 
         def A_enter(self):
