@@ -946,7 +946,7 @@ class FunctionConversionContext(object):
             expr = native_ast.Expression.TryCatch(
                 expr=expr,
                 varname="x",
-                handler=runtime_functions.fetch_exception.call(
+                handler=runtime_functions.fetch_exception2.call(
                     native_ast.const_uint64_expr(0).cast(VoidPtr),
                     native_ast.const_uint64_expr(0).cast(VoidPtr),
                     native_ast.const_uint64_expr(0).cast(VoidPtr)
