@@ -109,6 +109,12 @@ clear_exception = externalCallTarget(
     Void
 )
 
+match_exception = externalCallTarget(
+    "np_match_exception",
+    Bool,
+    Void.pointer()
+)
+
 fetch_exception = externalCallTarget(
     "np_fetch_exception",
     Void.pointer()

@@ -757,23 +757,58 @@ class FunctionConversionContext(object):
                     )
 
         if ast.matches.Try:
-            exc_varname = "exc." + str(ast.line_number)
-            self.variablesAssigned.add(exc_varname)
+            # all we're given is a string naming the exception, but we want the actual exception class
+            id_to_exception = {
+                "Exception": Exception,
+                "ArithmeticError": ArithmeticError,
+                "ZeroDivisionError": ZeroDivisionError,
+                "OverflowError": OverflowError,
+                "AttributeError": AttributeError,
+                "ValueError": ValueError,
+                "TypeError": TypeError,
+                "IndexError": IndexError
+            }
 
             subcontext = ExpressionConversionContext(self, variableStates)
             body, body_returns = self.convert_statement_list_ast(ast.body, variableStates)
             subcontext.pushEffect(body)
 
-            if len(ast.handlers) > 0:
-                if ast.handlers[0].name is not None:
-                    self.assignToLocalVariable(ast.handlers[0].name, subcontext.fetchExceptionObject(), variableStates)
+            handlers_context = ExpressionConversionContext(self, variableStates)
+            working_context = ExpressionConversionContext(self, variableStates)
+            working = native_ast.nullExpr  # actually want the default case to be a Raise here
+            working_returns = True  # change to False when the default case is a Raise
 
-                handler, handler_returns = self.convert_statement_list_ast(ast.handlers[0].body, variableStates)
-                if ast.handlers[0].name is None:
+            for h in reversed(ast.handlers):
+                handler_context = ExpressionConversionContext(self, variableStates)
+                if h.type is None:
+                    exc_type = Exception
+                else:
+                    exc_type = id_to_exception[h.type.id]
+
+                if h.name is not None:
+                    self.assignToLocalVariable(h.name, handler_context.fetchExceptionObject(exc_type), variableStates)
+                handler, handler_returns = self.convert_statement_list_ast(h.body, variableStates)
+                if h.name is None:
                     handler = runtime_functions.clear_exception.call() >> handler
-            else:
-                handler = None
-                handler_returns = False
+
+                cond_context = ExpressionConversionContext(self, variableStates)
+                cond = cond_context.matchExceptionObject(exc_type)
+
+                variableStatesMatch = variableStates.clone()
+                variableStatesOtherwise = variableStates.clone()
+
+                variableStates.becomeMerge(
+                    variableStatesMatch if handler_returns else None,
+                    variableStatesOtherwise if working_returns else None
+                )
+                working = native_ast.Expression.Branch(
+                    cond=cond_context.finalize(cond.nonref_expr, exceptionsTakeFrom=ast),
+                    true=handler_context.finalize(handler, exceptionsTakeFrom=ast),
+                    false=working_context.finalize(working, exceptionsTakeFrom=ast)
+                )
+                working_returns = handler_returns or working_returns
+
+            handlers_context.pushEffect(working_context.finalize(working, exceptionsTakeFrom=ast))
 
             final_context = ExpressionConversionContext(self, variableStates)
             if ast.finalbody is not None:
@@ -781,13 +816,13 @@ class FunctionConversionContext(object):
                 final_context.pushEffect(final)
             else:
                 final = None
-                final_returns = False
+                final_returns = True
 
-            if handler is not None:
+            if len(ast.handlers) > 0:
                 complete = native_ast.Expression.TryCatch(
                     expr=subcontext.finalize(None, exceptionsTakeFrom=ast),
-                    varname=exc_varname,
-                    handler=handler
+                    varname=".ignored",
+                    handler=handlers_context.finalize(None, exceptionsTakeFrom=ast)
                 )
             else:
                 complete = subcontext.finalize(None, exceptionsTakeFrom=ast)
@@ -795,7 +830,7 @@ class FunctionConversionContext(object):
             if final:
                 complete = complete >> final_context.finalize(None, exceptionsTakeFrom=ast)
 
-            return (complete, body_returns or handler_returns or final_returns)
+            return (complete, (body_returns or working_returns) and final_returns)
 
         if ast.matches.For:
             if not ast.target.matches.Name:
@@ -909,6 +944,7 @@ class FunctionConversionContext(object):
             return exprs, True
 
         if ast.matches.With:
+            # TODO: support Try before working on this
             assert len(ast.items) == 1
 
             expr_context = ExpressionConversionContext(self, variableStates)

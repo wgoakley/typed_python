@@ -21,8 +21,8 @@ from typed_python.compiler.type_wrappers.one_of_wrapper import OneOfWrapper
 from typed_python.compiler.python_object_representation import pythonObjectRepresentation
 from typed_python.compiler.typed_expression import TypedExpression
 from typed_python.compiler.conversion_exception import ConversionException
-from typed_python import NoneType, Alternative, OneOf, Int32, ListOf, String
-from typed_python._types import getTypePointer
+from typed_python import NoneType, Alternative, OneOf, Bool, Int32, ListOf, String
+from typed_python._types import getTypePointer, TypeFor
 
 builtinValueIdToNameAndValue = {id(v): (k, v) for k, v in __builtins__.items()}
 
@@ -97,12 +97,25 @@ class ExpressionConversionContext(object):
             )
         )
 
-    def fetchExceptionObject(self):
-        """Get a TypedExpression that represents the currently raised exception (as an object typed expression)
+    def matchExceptionObject(self, exc):
+        """Return expression that tests whether current exception is an instance of exception class exc
+        """
+        return self.push(
+            Bool,
+            lambda oExpr:
+            oExpr.expr.store(
+                runtime_functions.match_exception.call(
+                    native_ast.const_uint64_expr(id(exc)).cast(native_ast.Void.pointer())
+                )
+            )
+        )
+
+    def fetchExceptionObject(self, exc):
+        """Get a TypedExpression that represents the currently raised exception, as an object typed as ObjectOfType(exc)
         Don't generate unless you know there is an exception.
         """
         return self.push(
-            object,
+            TypeFor(exc),
             lambda oExpr:
             oExpr.expr.store(
                 runtime_functions.fetch_exception.call().cast(oExpr.expr_type.getNativeLayoutType())

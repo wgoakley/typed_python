@@ -1581,7 +1581,6 @@ class TestClassCompilationCompilation(unittest.TestCase):
         r2 = Compiled(inplace)(v)
         self.assertEqual(r2.s, expected.s)
 
-    # @pytest.mark.skip(reason="not supported")
     def test_try(self):
         def f0(x: int) -> str:
             ret = "try "
@@ -1596,7 +1595,7 @@ class TestClassCompilationCompilation(unittest.TestCase):
             try:
                 ret += str(1/x) + " "
             except:  # noqa: E722
-                raise NotImplementedError()
+                raise NotImplementedError("custom")
                 ret += "catch "
             finally:
                 ret += "finally"
@@ -1624,14 +1623,56 @@ class TestClassCompilationCompilation(unittest.TestCase):
             ret = "try "
             try:
                 ret += str(1/x) + " "
+                if x == 1:
+                    ret += x
+            except ZeroDivisionError as ex:
+                ret += "catch " + str(type(ex)) + " " + str(ex) + " "
+            except TypeError as ex:
+                ret += "catch2 " + str(type(ex)) + " "
+                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
+                # TODO: there are variations between interpreted and compiled code in the string representations of errors
             except Exception as ex:
-                ret += "catch " + str(ex) + " "
+                ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
             finally:
                 ret += "finally"
             return ret
 
-        # TODO: doesn't work for f4
-        for f in [f0, f1, f2, f3]:
+        def f5(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+                if x == 1:
+                    ret += x
+            except ArithmeticError as ex:
+                ret += "catch " + " " + str(ex) + " "
+                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
+                # TODO: the compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError
+            except TypeError as ex:
+                ret += "catch2 " + str(type(ex)) + " "
+                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
+                # TODO: there are variations between interpreted and compiled code in the string representations of errors
+            except Exception as ex:
+                ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
+            finally:
+                ret += "finally"
+                # TODO: in compiled code, ex is still usable here!  ex does not have correct scope!
+            return ret
+
+        # TODO: support finally in situation where control flow exits try block
+        def f6(x: int) -> str:
+            ret = "start "
+            i = 0
+            while 1:
+                ret += str(i)
+                i += 1
+                if i > x:
+                    try:
+                        break
+                    finally:
+                        ret += "finally"
+            return ret
+
+        for f in [f0, f1, f2, f3, f4, f5]:
             for v in [1, 0]:
                 r1 = result_or_exception(f, v)
                 r2 = result_or_exception(Compiled(f), v)
