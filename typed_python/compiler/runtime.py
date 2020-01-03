@@ -151,11 +151,11 @@ class Runtime:
 
         return resType
 
-    def compileFunctionOverload(self, typedFunc, overloadIx, arguments, argumentsAreTypes=False):
+    def compileFunctionOverload(self, functionType, overloadIx, arguments, argumentsAreTypes=False):
         """Attempt to compile typedFunc.overloads[overloadIx]' with the given arguments.
 
         Args:
-            typedFunc - a typed_python.Function instance
+            functionType - a typed_python.Function _type_
             overloadIx - an integer giving the index of the overload we're interested in
             arguments - a list of values (or types if 'argumentsAreTypes') for each of the
                 named function arguments contained in the overload
@@ -167,12 +167,15 @@ class Runtime:
             a TypedCallTarget.
         """
 
-        overload = typedFunc.overloads[overloadIx]
+        overload = functionType.overloads[overloadIx]
 
         assert len(arguments) == len(overload.args)
 
         with self.lock:
             inputWrappers = []
+
+            for t in overload.closureType.ElementTypes:
+                inputWrappers.append(typeWrapper(t))
 
             for i in range(len(arguments)):
                 inputWrappers.append(
@@ -185,7 +188,14 @@ class Runtime:
 
             self.timesCompiled += 1
 
-            callTarget = self.converter.convert(overload.functionObj, inputWrappers, overload.returnType, assertIsRoot=True)
+            callTarget = self.converter.convert(
+                overload.name,
+                overload.functionCode,
+                overload.functionGlobals,
+                inputWrappers,
+                overload.returnType,
+                assertIsRoot=True
+            )
 
             callTarget = self.converter.demasqueradeCallTargetOutput(callTarget)
 

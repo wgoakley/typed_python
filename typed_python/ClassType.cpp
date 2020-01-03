@@ -70,6 +70,7 @@ bool Class::cmp(instance_ptr left, instance_ptr right, int pyComparisonOp, bool 
 
             std::pair<bool, PyObject*> res = PyFunctionInstance::tryToCall(
                 it->second,
+                nullptr,
                 leftAsPyObj,
                 rightAsPyObj
                 );
@@ -126,6 +127,7 @@ void Class::repr(instance_ptr self, ReprAccumulator& stream, bool isStr) {
 
         std::pair<bool, PyObject*> res = PyFunctionInstance::tryToCall(
             it->second,
+            nullptr,
             selfAsPyObj
         );
 
@@ -167,6 +169,7 @@ typed_python_hash_type Class::hash(instance_ptr left) {
 
         std::pair<bool, PyObject*> res = PyFunctionInstance::tryToCall(
             it->second,
+            nullptr,
             leftAsPyObj
             );
         if (res.first) {

@@ -164,6 +164,17 @@ public:
 
     void repr(instance_ptr self, ReprAccumulator& out, bool isStr);
 
+    std::string toString(instance_ptr self, bool isStr) {
+        std::ostringstream s;
+
+        {
+            ReprAccumulator acc(s);
+            repr(self, acc, isStr);
+        }
+
+        return s.str();
+    }
+
     /* compare two types as closely as possible to how python would.
 
     If 'suppressExceptions', then don't generate exceptions when python doesn't have an ordering.

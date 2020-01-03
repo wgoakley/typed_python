@@ -40,7 +40,7 @@ class FunctionOutput:
 class FunctionConversionContext(object):
     """Helper function for converting a single python function given some input and output types"""
 
-    def __init__(self, converter, name, identity, ast_arg, statements, input_types, output_type, free_variable_lookup):
+    def __init__(self, converter, name, identity, ast_arg, statements, input_types, output_type, closureVarnames, globalVars):
         """Initialize a FunctionConverter
 
         Args:
@@ -51,13 +51,13 @@ class FunctionConversionContext(object):
             statements - a list of python_ast.Statement objects making up the body of the function
             input_types - a list of the input types actually passed to us
             output_type - the output type (if proscribed), or None
-            free_variable_lookup - a dict from name to the actual python object in this
-                function's closure. We don't distinguish between local and global scope yet.
+            closureVarnames - names of the variables in this function's closure
+            globalVars - a dict from name to the actual python object in the globals for this function
         """
         self.name = name
         self.variablesAssigned = computeAssignedVariables(statements)
         self.variablesRead = computeReadVariables(statements)
-        self.variablesBound = computeFunctionArgVariables(ast_arg)
+        self.variablesBound = computeFunctionArgVariables(ast_arg) | set(closureVarnames)
 
         self.converter = converter
         self.identity = identity
@@ -68,7 +68,8 @@ class FunctionConversionContext(object):
         self._output_type = output_type
         self._argumentsWithoutStackslots = set()  # arguments that we don't bother to copy into the stack
         self._varname_to_type = {}
-        self._free_variable_lookup = free_variable_lookup
+        self._globals = globalVars
+        self._closureVarnames = closureVarnames
 
         self.tempLetVarIx = 0
         self._tempStackVarIx = 0
@@ -184,13 +185,13 @@ class FunctionConversionContext(object):
     def _constructInitialVarnameToType(self):
         input_types = self._input_types
 
-        if len(input_types) != self._ast_arg.totalArgCount():
+        if len(input_types) != self._ast_arg.totalArgCount() + len(self._closureVarnames):
             raise ConversionException(
                 "Expected at least %s arguments but got %s" %
                 (len(self._ast_arg.args), len(input_types))
             )
 
-        self._argnames = self._ast_arg.argumentNames()
+        self._argnames = list(self._closureVarnames) + list(self._ast_arg.argumentNames())
 
         self._native_args = []
         for i, argName in enumerate(self._argnames):
@@ -942,8 +943,8 @@ class FunctionConversionContext(object):
         if self.isLocalVariable(name):
             return None
 
-        if name in self._free_variable_lookup:
-            return self._free_variable_lookup[name]
+        if name in self._globals:
+            return self._globals[name]
 
         if name in __builtins__:
             return __builtins__[name]

@@ -266,7 +266,8 @@ std::pair<bool, PyObject*> PyClassInstance::callMemberFunction(const char* name,
         PyTuple_SetItem(targetArgTuple, 3, incref(arg2)); //steals a reference
     }
 
-    auto res = PyFunctionInstance::tryToCallAnyOverload(method, nullptr, targetArgTuple, nullptr);
+    auto res = PyFunctionInstance::tryToCallAnyOverload(method, nullptr, nullptr, targetArgTuple, nullptr);
+
     if (res.first) {
         return res;
     }
@@ -328,7 +329,7 @@ void PyClassInstance::constructFromPythonArgumentsConcrete(Class* classT, uint8_
         })
     );
 
-    auto res = PyFunctionInstance::tryToCallAnyOverload(initMethod, selfAsObject, args, kwargs);
+    auto res = PyFunctionInstance::tryToCallAnyOverload(initMethod, nullptr, selfAsObject, args, kwargs);
 
     if (!res.first) {
         throw std::runtime_error("Cannot find a valid overload of __init__ with these arguments.");
@@ -381,7 +382,7 @@ PyObject* PyClassInstance::tp_getattr_concrete(PyObject* pyAttrName, const char*
     {
         auto it = type()->getPropertyFunctions().find(attrName);
         if (it != type()->getPropertyFunctions().end()) {
-            auto res = PyFunctionInstance::tryToCall(it->second, (PyObject*)this);
+            auto res = PyFunctionInstance::tryToCall(it->second, nullptr, (PyObject*)this);
             if (res.first) {
                 return res.second;
             }
@@ -540,6 +541,7 @@ bool PyClassInstance::compare_to_python_concrete(Class* t, instance_ptr self, Py
 
             std::pair<bool, PyObject*> res = PyFunctionInstance::tryToCall(
                 it->second,
+                nullptr,
                 selfAsPyObj,
                 other
             );
@@ -577,7 +579,7 @@ PyObject* PyClassInstance::tp_call_concrete(PyObject* args, PyObject* kwargs) {
     // else
     Function* method = it->second;
 
-    auto res = PyFunctionInstance::tryToCallAnyOverload(method, (PyObject*)this, args, kwargs);
+    auto res = PyFunctionInstance::tryToCallAnyOverload(method, nullptr, (PyObject*)this, args, kwargs);
 
     if (res.first) {
         return res.second;

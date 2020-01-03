@@ -35,6 +35,7 @@ PyObject* PyBoundMethodInstance::tp_call_concrete(PyObject* args, PyObject* kwar
         for (long overloadIx = 0; overloadIx < f->getOverloads().size(); overloadIx++) {
             std::pair<bool, PyObject*> res = PyFunctionInstance::tryToCallOverload(
                 f,
+                nullptr,
                 overloadIx,
                 objectInstance,
                 args,

@@ -18,7 +18,7 @@
 
 #include "Type.hpp"
 #include "ReprAccumulator.hpp"
-
+#include "Format.hpp"
 
 class Function : public Type {
 public:
@@ -141,12 +141,18 @@ public:
     class Overload {
     public:
         Overload(
-            PyFunctionObject* functionObj,
+            PyObject* pyFuncCode,
+            PyObject* pyFuncGlobals,
+            PyObject* pyFuncDefaults,
+            PyObject* pyFuncAnnotations,
+            NamedTuple* closureType,
             Type* returnType,
             const std::vector<FunctionArg>& args
             ) :
-                mFunctionObj(functionObj),
-                mFunctionCode(PyFunction_GetCode((PyObject*)functionObj)),
+                mFunctionCode(incref(pyFuncCode)),
+                mFunctionGlobals(incref(pyFuncGlobals)),
+                mFunctionDefaults(incref(pyFuncDefaults)),
+                mFunctionAnnotations(incref(pyFuncAnnotations)),
                 mReturnType(returnType),
                 mArgs(args),
                 mCompiledCodePtr(nullptr),
@@ -154,7 +160,8 @@ public:
                 mHasStarArg(false),
                 mMinPositionalArgs(0),
                 mMaxPositionalArgs(-1),
-                mClosureType(nullptr)
+                mClosureType(closureType),
+                mCachedFunctionObj(nullptr)
         {
             long argsWithDefaults = 0;
             long argsDefinitelyConsuming = 0;
@@ -263,10 +270,6 @@ public:
             return false;
         }
 
-        PyFunctionObject* getFunctionObj() const {
-            return mFunctionObj;
-        }
-
         Type* getReturnType() const {
             return mReturnType;
         }
@@ -283,6 +286,11 @@ public:
             for (auto& a: mArgs) {
                 a._visitReferencedTypes(visitor);
             }
+        }
+
+        template<class visitor_type>
+        void _visitContainedTypes(const visitor_type& visitor) {
+            visitor(mClosureType);
         }
 
         const std::vector<CompiledSpecialization>& getCompiledSpecializations() const {
@@ -303,6 +311,9 @@ public:
             if (mFunctionCode < other.mFunctionCode) { return true; }
             if (mFunctionCode > other.mFunctionCode) { return false; }
 
+            if (mFunctionGlobals < other.mFunctionGlobals) { return true; }
+            if (mFunctionGlobals > other.mFunctionGlobals) { return false; }
+
             if (mClosureType < other.mClosureType) { return true; }
             if (mClosureType > other.mClosureType) { return false; }
 
@@ -315,10 +326,32 @@ public:
             return false;
         }
 
-    private:
-        PyFunctionObject* mFunctionObj;
+        NamedTuple* getClosureType() const {
+            return mClosureType;
+        }
 
+        PyObject* getFunctionCode() const {
+            return mFunctionCode;
+        }
+
+        PyObject* getFunctionGlobals() const {
+            return mFunctionGlobals;
+        }
+
+        // create a new function object for this closure (or cache it
+        // if we have no closure)
+        PyObject* buildFunctionObj(instance_ptr self) const;
+
+    private:
         PyObject* mFunctionCode;
+
+        PyObject* mFunctionGlobals;
+
+        PyObject* mFunctionDefaults;
+
+        PyObject* mFunctionAnnotations;
+
+        mutable PyObject* mCachedFunctionObj;
 
         // the type of the function's closure. each local (e.g. non-global-scope variable)
         // is represented here by name.
@@ -349,9 +382,19 @@ public:
         mIsEntrypoint(isEntrypoint)
     {
         m_name = inName;
+
         m_is_simple = false;
-        m_is_default_constructible = true;
-        m_size = 0;
+
+        std::vector<Type*> overloadTypes;
+
+        for (auto& o: mOverloads) {
+            overloadTypes.push_back(o.getClosureType());
+        }
+
+        mClosureType = Tuple::Make(overloadTypes);
+
+        m_size = mClosureType->bytecount();
+        m_is_default_constructible = m_size == 0;
 
         endOfConstructorInitialization(); // finish initializing the type object.
     }
@@ -378,6 +421,10 @@ public:
 
     template<class visitor_type>
     void _visitContainedTypes(const visitor_type& visitor) {
+        for (auto& o: mOverloads) {
+            o._visitContainedTypes(visitor);
+        }
+        visitor(mClosureType);
     }
 
     template<class visitor_type>
@@ -397,7 +444,7 @@ public:
     }
 
     bool cmp(instance_ptr left, instance_ptr right, int pyComparisonOp, bool suppressExceptions) {
-        return cmpResultToBoolForPyOrdering(pyComparisonOp, 0);
+        return mClosureType->cmp(left, right, pyComparisonOp, suppressExceptions);
     }
 
     template<class buf_t>
@@ -415,19 +462,43 @@ public:
     }
 
     typed_python_hash_type hash(instance_ptr left) {
-        return 1;
+        if (mClosureType->bytecount() == 0) {
+            return 1;
+        }
+
+        return mClosureType->hash(left);
     }
 
     void constructor(instance_ptr self) {
+        if (mClosureType->bytecount() == 0) {
+            return;
+        }
+
+        mClosureType->constructor(self);
     }
 
     void destroy(instance_ptr self) {
+        if (mClosureType->bytecount() == 0) {
+            return;
+        }
+
+        mClosureType->destroy(self);
     }
 
     void copy_constructor(instance_ptr self, instance_ptr other) {
+        if (mClosureType->bytecount() == 0) {
+            return;
+        }
+
+        mClosureType->copy_constructor(self, other);
     }
 
     void assign(instance_ptr self, instance_ptr other) {
+        if (mClosureType->bytecount() == 0) {
+            return;
+        }
+
+        mClosureType->assign(self, other);
     }
 
     const std::vector<Overload>& getOverloads() const {
@@ -465,8 +536,16 @@ public:
         return Function::Make(name(), mOverloads, isEntrypoint);
     }
 
+    Tuple* getClosureType() const {
+        return mClosureType;
+    }
+
 private:
     std::vector<Overload> mOverloads;
+
+    // tuple of named tuples, one per overload, containing the
+    // bound local variables for that overload.
+    Tuple* mClosureType;
 
     bool mIsEntrypoint;
 };

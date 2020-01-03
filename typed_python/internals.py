@@ -12,7 +12,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-from types import FunctionType
+from types import FunctionType, ModuleType
 
 import _thread
 import threading
@@ -51,6 +51,14 @@ class Final:
     we don't have to look up method dispatch in the vtable.
     """
     pass
+
+
+def closurePassingType(x):
+    """Determine the type we'll use to represent 'x' in a closure."""
+    if isinstance(x, (type, ModuleType)):
+        return typed_python.Value(x)
+
+    return type(x)
 
 
 class Member:
@@ -114,7 +122,7 @@ magicMethodTypes = {
 }
 
 
-def makeFunction(name, f, classType=None):
+def makeFunctionType(name, f, classType=None):
     if isinstance(f, typed_python._types.Function):
         return type(f)
 
@@ -208,14 +216,14 @@ class ClassMetaclass(type):
                 members.append((eltName, elt._type, elt._default_value))
                 classMembers.append((eltName, elt))
             elif isinstance(elt, property):
-                properties[eltName] = makeFunction(eltName, elt.fget)
+                properties[eltName] = makeFunctionType(eltName, elt.fget)
             elif isinstance(elt, staticmethod):
                 if eltName not in staticFunctions:
-                    staticFunctions[eltName] = makeFunction(eltName, elt.__func__)
+                    staticFunctions[eltName] = makeFunctionType(eltName, elt.__func__)
                 else:
                     staticFunctions[eltName] = typed_python._types.Function(
                         staticFunctions[eltName],
-                        makeFunction(eltName, elt.__func__)
+                        makeFunctionType(eltName, elt.__func__)
                     )
             elif (
                 isinstance(elt, FunctionType)
@@ -223,11 +231,11 @@ class ClassMetaclass(type):
                 or isinstance(elt, type) and issubclass(elt, typed_python._types.Function)
             ):
                 if eltName not in memberFunctions:
-                    memberFunctions[eltName] = makeFunction(eltName, elt, actualClass)
+                    memberFunctions[eltName] = makeFunctionType(eltName, elt, actualClass)
                 else:
                     memberFunctions[eltName] = typed_python._types.Function(
                         memberFunctions[eltName],
-                        makeFunction(eltName, elt, actualClass)
+                        makeFunctionType(eltName, elt, actualClass)
                     )
             else:
                 classMembers.append((eltName, elt))
@@ -248,7 +256,7 @@ class ClassMetaclass(type):
 
 def Function(f):
     """Turn a normal python function into a 'typed_python.Function' which obeys type restrictions."""
-    return makeFunction(f.__name__, f)()
+    return makeFunctionType(f.__name__, f)(f)
 
 
 class FunctionOverloadArg:
@@ -292,26 +300,30 @@ class FunctionOverloadArg:
 
 
 class FunctionOverload:
-    def __init__(self, functionTypeObject, index, f, returnType):
+    def __init__(self, functionTypeObject, index, code, funcGlobals, closureType, returnType):
         """Initialize a FunctionOverload.
 
         Args:
             functionTypeObject - a _types.Function type object representing the function
             index - the index within the _types.Function sequence of overloads we represent
-            f - the actual python function we're wrapping
+            code - the code object for the function we're wrapping
+            funcGlobals - the globals for the function we're wrapping
+            closureType - a NamedTuple containing the types non-global variables bound by
+                this closure.
             returnType - the return type annotation, or None if None provided. (if None was
                 specified, that would be the NoneType)
         """
         self.functionTypeObject = functionTypeObject
         self.index = index
-
-        self.functionObj = f
+        self.closureType = closureType
+        self.functionCode = code
+        self.functionGlobals = funcGlobals
         self.returnType = returnType
         self.args = ()
 
     @property
     def name(self):
-        return self.functionObj.__name__
+        return self.functionTypeObject.__name__
 
     def minPositionalCount(self):
         for i in range(len(self.args)):
@@ -338,7 +350,13 @@ class FunctionOverload:
         )
 
     def _installNativePointer(self, fp, returnType, argumentTypes):
-        typed_python._types.installNativeFunctionPointer(self.functionTypeObject, self.index, fp, returnType, tuple(argumentTypes))
+        typed_python._types.installNativeFunctionPointer(
+            self.functionTypeObject,
+            self.index,
+            fp,
+            returnType,
+            tuple(argumentTypes)[len(self.closureType.ElementTypes):]
+        )
 
 
 class DisableCompiledCode:

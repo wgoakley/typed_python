@@ -23,14 +23,14 @@ Function* PyFunctionInstance::type() {
 
 // static
 std::pair<bool, PyObject*>
-PyFunctionInstance::tryToCallAnyOverload(const Function* f, PyObject* self,
+PyFunctionInstance::tryToCallAnyOverload(const Function* f, instance_ptr funcClosure, PyObject* self,
                                          PyObject* args, PyObject* kwargs) {
     //first try to match arguments with no explicit conversion.
     //if that fails, try explicit conversion
     for (long tryToConvertExplicitly = 0; tryToConvertExplicitly <= 1; tryToConvertExplicitly++) {
         for (long overloadIx = 0; overloadIx < f->getOverloads().size(); overloadIx++) {
             std::pair<bool, PyObject*> res =
-                PyFunctionInstance::tryToCallOverload(f, overloadIx, self, args, kwargs, tryToConvertExplicitly, false);
+                PyFunctionInstance::tryToCallOverload(f, funcClosure, overloadIx, self, args, kwargs, tryToConvertExplicitly, false);
             if (res.first) {
                 return res;
             }
@@ -51,6 +51,7 @@ PyFunctionInstance::tryToCallAnyOverload(const Function* f, PyObject* self,
 // static
 std::pair<bool, PyObject*> PyFunctionInstance::tryToCallOverload(
         const Function* f,
+        instance_ptr functionClosure,
         long overloadIx,
         PyObject* self,
         PyObject* args,
@@ -119,7 +120,7 @@ std::pair<bool, PyObject*> PyFunctionInstance::tryToCallOverload(
     bool hadNativeDispatch = false;
 
     if (!native_dispatch_disabled) {
-        auto tried_and_result = dispatchFunctionCallToNative(f, overloadIx, mapping);
+        auto tried_and_result = dispatchFunctionCallToNative(f, functionClosure, overloadIx, mapping);
         hadNativeDispatch = tried_and_result.first;
         result.steal(tried_and_result.second);
     }
@@ -127,8 +128,9 @@ std::pair<bool, PyObject*> PyFunctionInstance::tryToCallOverload(
     if (!hadNativeDispatch) {
         PyObjectStealer argTup(mapping.buildPositionalArgTuple());
         PyObjectStealer kwargD(mapping.buildKeywordArgTuple());
+        PyObjectStealer funcObj(overload.buildFunctionObj(functionClosure + f->getClosureType()->getOffsets()[overloadIx]));
 
-        result.steal(PyObject_Call((PyObject*)overload.getFunctionObj(), (PyObject*)argTup, (PyObject*)kwargD));
+        result.steal(PyObject_Call((PyObject*)funcObj, (PyObject*)argTup, (PyObject*)kwargD));
     }
 
     //exceptions pass through directly
@@ -153,7 +155,7 @@ std::pair<bool, PyObject*> PyFunctionInstance::tryToCallOverload(
     return std::make_pair(true, incref(result));
 }
 
-std::pair<bool, PyObject*> PyFunctionInstance::tryToCall(const Function* f, PyObject* arg0, PyObject* arg1, PyObject* arg2) {
+std::pair<bool, PyObject*> PyFunctionInstance::tryToCall(const Function* f, instance_ptr closure, PyObject* arg0, PyObject* arg1, PyObject* arg2) {
     PyObjectStealer argTuple(
         (arg0 && arg1 && arg2) ?
             PyTuple_Pack(3, arg0, arg1, arg2) :
@@ -163,15 +165,26 @@ std::pair<bool, PyObject*> PyFunctionInstance::tryToCall(const Function* f, PyOb
             PyTuple_Pack(1, arg0) :
             PyTuple_Pack(0)
         );
-    return PyFunctionInstance::tryToCallAnyOverload(f, nullptr, argTuple, nullptr);
+    return PyFunctionInstance::tryToCallAnyOverload(f, closure, nullptr, argTuple, nullptr);
 }
 
 // static
-std::pair<bool, PyObject*> PyFunctionInstance::dispatchFunctionCallToNative(const Function* f, long overloadIx, const FunctionCallArgMapping& mapper) {
+std::pair<bool, PyObject*> PyFunctionInstance::dispatchFunctionCallToNative(
+        const Function* f,
+        instance_ptr functionClosure,
+        long overloadIx,
+        const FunctionCallArgMapping& mapper
+    ) {
     const Function::Overload& overload(f->getOverloads()[overloadIx]);
 
     for (const auto& spec: overload.getCompiledSpecializations()) {
-        auto res = dispatchFunctionCallToCompiledSpecialization(overload, spec, mapper);
+        auto res = dispatchFunctionCallToCompiledSpecialization(
+            overload,
+            functionClosure + f->getClosureType()->getOffsets()[overloadIx],
+            spec,
+            mapper
+        );
+
         if (res.first) {
             return res;
         }
@@ -201,13 +214,12 @@ std::pair<bool, PyObject*> PyFunctionInstance::dispatchFunctionCallToNative(cons
         }
 
         PyObjectStealer arguments(mapper.extractFunctionArgumentValues());
-        PyObjectStealer funcAsObj(PyInstance::initialize((Type*)f, [&](instance_ptr p) {}));
 
         PyObject* res = PyObject_CallMethod(
             singleton,
             "compileFunctionOverload",
             "OlO",
-            (PyObject*)funcAsObj,
+            PyInstance::typePtrToPyTypeRepresentation((Type*)f),
             overloadIx,
             (PyObject*)arguments
         );
@@ -219,7 +231,13 @@ std::pair<bool, PyObject*> PyFunctionInstance::dispatchFunctionCallToNative(cons
         decref(res);
 
         for (const auto& spec: overload.getCompiledSpecializations()) {
-            auto res = dispatchFunctionCallToCompiledSpecialization(overload, spec, mapper);
+            auto res = dispatchFunctionCallToCompiledSpecialization(
+                overload,
+                functionClosure + f->getClosureType()->getOffsets()[overloadIx],
+                spec,
+                mapper
+            );
+
             if (res.first) {
                 return res;
             }
@@ -233,6 +251,7 @@ std::pair<bool, PyObject*> PyFunctionInstance::dispatchFunctionCallToNative(cons
 
 std::pair<bool, PyObject*> PyFunctionInstance::dispatchFunctionCallToCompiledSpecialization(
                                                         const Function::Overload& overload,
+                                                        instance_ptr overloadClosure,
                                                         const Function::CompiledSpecialization& specialization,
                                                         const FunctionCallArgMapping& mapper
                                                         ) {
@@ -270,8 +289,16 @@ std::pair<bool, PyObject*> PyFunctionInstance::dispatchFunctionCallToCompiledSpe
     }
 
     try {
+        NamedTuple* closureType = overload.getClosureType();
+
         Instance result = Instance::createAndInitialize(returnType, [&](instance_ptr returnData) {
             std::vector<instance_ptr> args;
+
+            // we pass each closure variable first, then the actual function arguments.
+            for (long k = 0; k < closureType->getTypes().size(); k++) {
+                args.push_back(overloadClosure + closureType->getOffsets()[k]);
+            }
+
             for (auto& i: instances) {
                 args.push_back(i.data());
             }
@@ -318,7 +345,9 @@ PyObject* PyFunctionInstance::createOverloadPyRepresentation(Function* f) {
                 funcOverload,
                 typePtrToPyTypeRepresentation(f),
                 (PyObject*)pyIndex,
-                (PyObject*)overload.getFunctionObj(),
+                (PyObject*)overload.getFunctionCode(),
+                (PyObject*)overload.getFunctionGlobals(),
+                (PyObject*)typePtrToPyTypeRepresentation(overload.getClosureType()),
                 overload.getReturnType() ? (PyObject*)typePtrToPyTypeRepresentation(overload.getReturnType()) : Py_None,
                 NULL
                 )
@@ -359,6 +388,7 @@ PyObject* PyFunctionInstance::tp_call_concrete(PyObject* args, PyObject* kwargs)
         for (long overloadIx = 0; overloadIx < type()->getOverloads().size(); overloadIx++) {
             std::pair<bool, PyObject*> res = PyFunctionInstance::tryToCallOverload(
                 type(),
+                dataPtr(),
                 overloadIx,
                 nullptr,
                 args,
@@ -443,11 +473,40 @@ void PyFunctionInstance::mirrorTypeInformationIntoPyTypeConcrete(Function* inTyp
         overloads
     );
 
+    PyDict_SetItemString(
+        pyType->tp_dict,
+        "ClosureType",
+        PyInstance::typePtrToPyTypeRepresentation(inType->getClosureType())
+    );
 }
 
 int PyFunctionInstance::pyInquiryConcrete(const char* op, const char* opErrRep) {
     // op == '__bool__'
     return 1;
+}
+
+/* static */
+PyObject* PyFunctionInstance::extractPyFun(PyObject* funcObj, PyObject* args, PyObject* kwargs) {
+    static const char *kwlist[] = {"overloadIx", NULL};
+
+    long overloadIx;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "l", (char**)kwlist, &overloadIx)) {
+        return nullptr;
+    }
+
+    Function* fType = (Function*)((PyInstance*)(funcObj))->type();
+
+    if (overloadIx < 0 || overloadIx >= fType->getOverloads().size()) {
+        PyErr_SetString(PyExc_IndexError, "Overload index out of bounds");
+        return nullptr;
+    }
+
+    return translateExceptionToPyObject([&]() {
+        return fType->getOverloads()[overloadIx].buildFunctionObj(
+            ((PyInstance*)funcObj)->dataPtr() + fType->getClosureType()->getOffsets()[overloadIx]
+        );
+    });
 }
 
 /* static */
@@ -559,6 +618,7 @@ PyMethodDef* PyFunctionInstance::typeMethodsConcrete(Type* t) {
         {"overload", (PyCFunction)PyFunctionInstance::overload, METH_VARARGS | METH_KEYWORDS, NULL},
         {"withEntrypoint", (PyCFunction)PyFunctionInstance::withEntrypoint, METH_VARARGS | METH_KEYWORDS, NULL},
         {"resultTypeFor", (PyCFunction)PyFunctionInstance::resultTypeFor, METH_VARARGS | METH_KEYWORDS, NULL},
+        {"extractPyFun", (PyCFunction)PyFunctionInstance::extractPyFun, METH_VARARGS | METH_KEYWORDS, NULL},
         {NULL, NULL}
     };
 }
@@ -571,28 +631,28 @@ Function* PyFunctionInstance::convertPythonObjectToFunction(PyObject* name, PyOb
         return nullptr;
     }
 
-    static PyObject* makeFunction = PyObject_GetAttrString(internalsModule, "makeFunction");
+    static PyObject* makeFunctionType = PyObject_GetAttrString(internalsModule, "makeFunctionType");
 
-    if (!makeFunction) {
-        PyErr_SetString(PyExc_TypeError, "Internal error: couldn't find typed_python.internals.makeFunction");
+    if (!makeFunctionType) {
+        PyErr_SetString(PyExc_TypeError, "Internal error: couldn't find typed_python.internals.makeFunctionType");
         return nullptr;
     }
 
-    PyObject* fRes = PyObject_CallFunctionObjArgs(makeFunction, name, funcObj, NULL);
+    PyObject* fRes = PyObject_CallFunctionObjArgs(makeFunctionType, name, funcObj, NULL);
 
     if (!fRes) {
         return nullptr;
     }
 
     if (!PyType_Check(fRes)) {
-        PyErr_SetString(PyExc_TypeError, "Internal error: expected typed_python.internals.makeFunction to return a type");
+        PyErr_SetString(PyExc_TypeError, "Internal error: expected typed_python.internals.makeFunctionType to return a type");
         return nullptr;
     }
 
     Type* actualType = PyInstance::extractTypeFrom((PyTypeObject*)fRes);
 
     if (!actualType || actualType->getTypeCategory() != Type::TypeCategory::catFunction) {
-        PyErr_Format(PyExc_TypeError, "Internal error: expected makeFunction to return a Function. Got %S", fRes);
+        PyErr_Format(PyExc_TypeError, "Internal error: expected makeFunctionType to return a Function. Got %S", fRes);
         return nullptr;
     }
 
@@ -609,14 +669,47 @@ bool PyFunctionInstance::pyValCouldBeOfTypeConcrete(Function* type, PyObject* py
         return false;
     }
 
-    return PyFunction_GetCode((PyObject*)type->getOverloads()[0].getFunctionObj()) == PyFunction_GetCode(pyRepresentation);
+    return type->getOverloads()[0].getFunctionCode() == PyFunction_GetCode(pyRepresentation);
 }
 
 /* static */
 void PyFunctionInstance::copyConstructFromPythonInstanceConcrete(Function* type, instance_ptr tgt, PyObject* pyRepresentation, bool isExplicit) {
-    if (pyValCouldBeOfTypeConcrete(type, pyRepresentation, isExplicit)) {
+    if (!pyValCouldBeOfTypeConcrete(type, pyRepresentation, isExplicit)) {
+        throw std::runtime_error("Can't convert to " + type->name());
+    }
+
+    NamedTuple* closureType = type->getOverloads()[0].getClosureType();
+
+    if (closureType->bytecount() == 0) {
+        // there's nothing to do.
         return;
     }
 
-    throw std::runtime_error("Can't convert to " + type->name());
+    PyObject* pyClosure = PyFunction_GetClosure(pyRepresentation);
+
+    if (!pyClosure || !PyTuple_Check(pyClosure) || PyTuple_Size(pyClosure) != closureType->getTypes().size()) {
+        throw std::runtime_error("Expected the pyClosure to have " + format(closureType->getTypes().size()) + " cells.");
+    }
+
+    closureType->constructor(tgt, [&](instance_ptr tgtCell, int index) {
+        PyObject* cell = PyTuple_GetItem(pyClosure, index);
+        if (!cell) {
+            throw PythonExceptionSet();
+        }
+
+        if (!PyCell_Check(cell)) {
+            throw std::runtime_error("Expected function closure to be made up of cells.");
+        }
+
+        if (!PyCell_GET(cell)) {
+            throw std::runtime_error("Cell for " + closureType->getNames()[index] + " was empty.");
+        }
+
+        PyInstance::copyConstructFromPythonInstance(
+            closureType->getTypes()[index],
+            tgtCell,
+            PyCell_GET(cell),
+            isExplicit
+        );
+    });
 }

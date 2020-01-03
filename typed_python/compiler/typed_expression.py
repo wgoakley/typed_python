@@ -230,6 +230,9 @@ class TypedExpression(object):
     def toBool(self):
         return self.expr_type.convert_bool_cast(self.context, self)
 
+    def refAs(self, i):
+        return self.expr_type.refAs(self.context, self, i)
+
     @staticmethod
     def asBool(typedExpressionOrNone):
         if typedExpressionOrNone is not None:

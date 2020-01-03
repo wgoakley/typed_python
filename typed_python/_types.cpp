@@ -703,9 +703,82 @@ PyObject *MakeFunctionType(PyObject* nullValue, PyObject* args) {
 
         std::vector<Function::Overload> overloads;
 
+        std::vector<std::string> closureVarnames;
+        std::vector<Type*> closureVarTypes;
+
+        PyObject* closure = PyFunction_GetClosure(funcObj);
+
+        if (closure) {
+            PyObjectStealer coFreevars(PyObject_GetAttrString(PyFunction_GetCode(funcObj), "co_freevars"));
+
+            if (!coFreevars) {
+                return NULL;
+            }
+
+            if (!PyTuple_Check(coFreevars)) {
+                PyErr_Format(PyExc_TypeError, "f.__code__.co_freevars was not a tuple");
+                return NULL;
+            }
+
+            if (PyTuple_Size(coFreevars) != PyTuple_Size(closure)) {
+                PyErr_Format(PyExc_TypeError, "f.__code__.co_freevars had a different number of elements than the closure");
+                return NULL;
+            }
+
+            for (long ix = 0; ix < PyTuple_Size(coFreevars); ix++) {
+                PyObject* varname = PyTuple_GetItem(coFreevars, ix);
+                if (!PyUnicode_Check(varname)) {
+                    PyErr_Format(PyExc_TypeError, "f.__code__.co_freevars was not all strings");
+                    return NULL;
+                }
+                closureVarnames.push_back(std::string(PyUnicode_AsUTF8(varname)));
+            }
+
+            for (long ix = 0; ix < PyTuple_Size(closure); ix++) {
+
+                PyObject* cell = PyTuple_GetItem(closure, ix);
+                if (!PyCell_Check(cell)) {
+                    PyErr_Format(PyExc_TypeError, "Function closure needs to all be cells.");
+                    return NULL;
+                }
+
+                PyObject* cellContents = PyCell_GET(cell);
+
+                if (!cellContents) {
+                    PyErr_Format(
+                        PyExc_TypeError,
+                        "free variable '%s' referenced before assignment in enclosing scope",
+                        closureVarnames[ix].c_str()
+                    );
+                    return nullptr;
+                }
+
+                static PyObject* passingTypeFun = PyInstance::getInternalModuleMember("closurePassingType");
+
+                PyObjectStealer passingType(PyObject_CallFunctionObjArgs(passingTypeFun, cellContents, NULL));
+
+                if (!passingType) {
+                    return NULL;
+                }
+
+                Type* t = PyInstance::tryUnwrapPyInstanceToType(passingType);
+
+                if (!t) {
+                    PyErr_Format(PyExc_TypeError, "Failed to determine a valid passing type.");
+                    return NULL;
+                }
+
+                closureVarTypes.push_back(t);
+            }
+        }
+
         overloads.push_back(
             Function::Overload(
-                (PyFunctionObject*)(PyObject*)funcObj,
+                PyFunction_GetCode(funcObj),
+                PyFunction_GetGlobals(funcObj),
+                PyFunction_GetDefaults(funcObj),
+                PyFunction_GetAnnotations(funcObj),
+                NamedTuple::Make(closureVarTypes, closureVarnames),
                 rType,
                 argList
             )

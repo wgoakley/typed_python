@@ -17,7 +17,7 @@ import typed_python.compiler.native_ast as native_ast
 import typed_python.compiler.type_wrappers.runtime_functions as runtime_functions
 import types
 
-from typed_python.internals import makeFunction, FunctionOverload
+from typed_python.internals import makeFunctionType, FunctionOverload
 from typed_python.compiler.function_stack_state import FunctionStackState
 from typed_python.compiler.type_wrappers.one_of_wrapper import OneOfWrapper
 from typed_python.compiler.python_object_representation import pythonObjectRepresentation
@@ -949,7 +949,7 @@ class ExpressionConversionContext(object):
             raise Exception(f"Can't convert a py function of type {type(f)}")
 
         if f not in _pyFuncToFuncCache:
-            _pyFuncToFuncCache[f] = makeFunction(f.__name__, f)
+            _pyFuncToFuncCache[f] = makeFunctionType(f.__name__, f)
         typedFunc = _pyFuncToFuncCache[f]
 
         concreteArgs = self.buildFunctionArguments(typedFunc.overloads[0], args, kwargs)
@@ -981,6 +981,8 @@ class ExpressionConversionContext(object):
             return
 
         if call_target.output_type.is_pass_by_ref:
+            assert len(call_target.named_call_target.arg_types) == len(native_args)
+
             return self.push(
                 call_target.output_type,
                 lambda output_slot: call_target.call(output_slot.expr, *native_args)
@@ -1112,8 +1114,8 @@ class ExpressionConversionContext(object):
             varType = self.variableStates.currentType(name)
             return self.recastVariableAsRestrictedType(res, varType)
 
-        if name in self.functionContext._free_variable_lookup:
-            return pythonObjectRepresentation(self, self.functionContext._free_variable_lookup[name])
+        if name in self.functionContext._globals:
+            return pythonObjectRepresentation(self, self.functionContext._globals[name])
 
         if name in __builtins__:
             return pythonObjectRepresentation(self, __builtins__[name])

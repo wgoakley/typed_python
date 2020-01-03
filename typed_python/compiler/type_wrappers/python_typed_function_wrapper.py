@@ -27,23 +27,50 @@ typeWrapper = lambda x: typed_python.compiler.python_object_representation.typed
 
 
 class PythonTypedFunctionWrapper(Wrapper):
-    is_pod = True
-    is_empty = True
-    is_pass_by_ref = False
+    is_default_constructible = False
 
     def __init__(self, f):
         if isinstance(f, typed_python._types.Function):
             f = type(f)
 
+        self.closureWrapper = typeWrapper(f.ClosureType)
+
         super().__init__(f)
 
     def getNativeLayoutType(self):
-        return native_ast.Type.Void()
+        return self.closureWrapper.getNativeLayoutType()
+
+    @property
+    def is_pod(self):
+        return self.closureWrapper.is_pod
+
+    @property
+    def is_empty(self):
+        return self.closureWrapper.is_empty
+
+    @property
+    def is_pass_by_ref(self):
+        return self.closureWrapper.is_pass_by_ref
+
+    def convert_copy_initialize(self, context, expr, other):
+        expr.changeType(self.closureWrapper).convert_copy_initialize(
+            other.changeType(self.closureWrapper)
+        )
+
+    def convert_assign(self, context, expr, other):
+        expr.changeType(self.closureWrapper).convert_assign(
+            other.changeType(self.closureWrapper)
+        )
+
+    def convert_destroy(self, context, expr):
+        expr.changeType(self.closureWrapper).convert_destroy()
 
     def convert_call(self, context, left, args, kwargs):
         # check if we are marked 'nocompile' in which case we convert to 'object' and dispatch
         # to the interpreter. We do retain any typing information on the return type, however.
-        if len(self.typeRepresentation.overloads) == 1:
+
+        # todo: reenable this
+        if len(self.typeRepresentation.overloads) == 1 and False:
             overload = self.typeRepresentation.overloads[0]
             functionObj = overload.functionObj
 
@@ -90,8 +117,11 @@ class PythonTypedFunctionWrapper(Wrapper):
             # just one overload will do. We can just instantiate this particular function
             # with a signature that comes from the method overload signature itself.
             singleConvertedOverload = context.functionContext.converter.convert(
-                overload.functionObj,
-                [a.expr_type for a in argsToPass],
+                overload.name,
+                overload.functionCode,
+                overload.functionGlobals,
+                [typeWrapper(t) for t in overload.closureType.ElementTypes]
+                + [a.expr_type for a in argsToPass],
                 overload.returnType,
                 callback=None
             )
@@ -105,7 +135,13 @@ class PythonTypedFunctionWrapper(Wrapper):
 
                 return
 
-            res = context.call_typed_call_target(singleConvertedOverload, argsToPass)
+            closureTuple = left.changeType(self.closureWrapper).refAs(overload.index)
+            closureArgs = [closureTuple.refAs(i) for i in range(len(closureTuple.expr_type.typeRepresentation.ElementTypes))]
+
+            res = context.call_typed_call_target(
+                singleConvertedOverload,
+                closureArgs + argsToPass
+            )
 
             return res
 
