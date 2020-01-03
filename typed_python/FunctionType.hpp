@@ -146,13 +146,15 @@ public:
             const std::vector<FunctionArg>& args
             ) :
                 mFunctionObj(functionObj),
+                mFunctionCode(PyFunction_GetCode((PyObject*)functionObj)),
                 mReturnType(returnType),
                 mArgs(args),
                 mCompiledCodePtr(nullptr),
                 mHasKwarg(false),
                 mHasStarArg(false),
                 mMinPositionalArgs(0),
-                mMaxPositionalArgs(-1)
+                mMaxPositionalArgs(-1),
+                mClosureType(nullptr)
         {
             long argsWithDefaults = 0;
             long argsDefinitelyConsuming = 0;
@@ -298,8 +300,11 @@ public:
         }
 
         bool operator<(const Overload& other) const {
-            if (mFunctionObj < other.mFunctionObj) { return true; }
-            if (mFunctionObj > other.mFunctionObj) { return false; }
+            if (mFunctionCode < other.mFunctionCode) { return true; }
+            if (mFunctionCode > other.mFunctionCode) { return false; }
+
+            if (mClosureType < other.mClosureType) { return true; }
+            if (mClosureType > other.mClosureType) { return false; }
 
             if (mReturnType < other.mReturnType) { return true; }
             if (mReturnType > other.mReturnType) { return false; }
@@ -312,9 +317,21 @@ public:
 
     private:
         PyFunctionObject* mFunctionObj;
+
+        PyObject* mFunctionCode;
+
+        // the type of the function's closure. each local (e.g. non-global-scope variable)
+        // is represented here by name.
+        NamedTuple* mClosureType;
+
         Type* mReturnType;
+
         std::vector<FunctionArg> mArgs;
+
+        // in compiled code, the closure arguments get passed in front of the
+        // actual function arguments
         std::vector<CompiledSpecialization> mCompiledSpecializations;
+
         compiled_code_entrypoint mCompiledCodePtr; //accepts a pointer to packed arguments and another pointer with the return value
 
         bool mHasStarArg;

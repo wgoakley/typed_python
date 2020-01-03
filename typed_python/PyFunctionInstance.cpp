@@ -609,7 +609,7 @@ bool PyFunctionInstance::pyValCouldBeOfTypeConcrete(Function* type, PyObject* py
         return false;
     }
 
-    return (PyObject*)type->getOverloads()[0].getFunctionObj() == pyRepresentation;
+    return PyFunction_GetCode((PyObject*)type->getOverloads()[0].getFunctionObj()) == PyFunction_GetCode(pyRepresentation);
 }
 
 /* static */
