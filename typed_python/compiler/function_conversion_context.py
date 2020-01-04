@@ -23,7 +23,6 @@ from typed_python.compiler.python_ast_analysis import (
 import typed_python.compiler
 import typed_python.compiler.type_wrappers.runtime_functions as runtime_functions
 import typed_python.compiler.native_ast as native_ast
-from typed_python.compiler.native_ast import VoidPtr
 from typed_python.compiler.expression_conversion_context import ExpressionConversionContext
 from typed_python.compiler.function_stack_state import FunctionStackState
 from typed_python.compiler.type_wrappers.none_wrapper import NoneWrapper
@@ -944,8 +943,7 @@ class FunctionConversionContext(object):
             return exprs, True
 
         if ast.matches.With:
-            # TODO: support Try before working on this
-            assert len(ast.items) == 1
+            assert len(ast.items) == 1 and ast.items[0].optional_vars is None
 
             expr_context = ExpressionConversionContext(self, variableStates)
 
@@ -959,36 +957,69 @@ class FunctionConversionContext(object):
             if withResponse is None:
                 return expr_context.finalize(None, exceptionsTakeFrom=ast), False
 
-            if ast.items[0].optional_vars is not None:
-                self.assignToLocalVariable(ast.items[0].optional_vars.id, withResponse, variableStates)
-
             true, true_returns = self.convert_statement_list_ast(ast.body, variableStates)
 
             exit_context = ExpressionConversionContext(self, variableStates)
-            # a001 = exit_context.pushLet(str, exit_context.constant("a").expr, true)
 
             arg.changeContext(exit_context).convert_context_manager_exit(
                 [exit_context.constant(None) for _ in range(3)]
-                # [a001, a001, a001]
             )
-            # with cond_context.ifelse(is_populated.nonref_expr) as (if_true, if_false):
-            #     with if_true:
-            #         runtime_functions.clear_exception.call()
 
-            expr = native_ast.Expression.Finally(
-                expr=expr_context.finalize(true, exceptionsTakeFrom=ast),
-                teardowns=[native_ast.Teardown.Always(expr=exit_context.finalize(None, exceptionsTakeFrom=ast))]
+            return (
+                native_ast.Expression.Finally(
+                    expr=expr_context.finalize(true, exceptionsTakeFrom=ast),
+                    teardowns=[native_ast.Teardown.Always(
+                        expr=exit_context.finalize(None, exceptionsTakeFrom=ast)
+                    )]
+                ),
+                true_returns
             )
-            expr = native_ast.Expression.TryCatch(
-                expr=expr,
-                varname="x",
-                handler=runtime_functions.fetch_exception2.call(
-                    native_ast.const_uint64_expr(0).cast(VoidPtr),
-                    native_ast.const_uint64_expr(0).cast(VoidPtr),
-                    native_ast.const_uint64_expr(0).cast(VoidPtr)
-                )
-            )
-            return (expr, true_returns)
+        # if ast.matches.With:
+        #     # TODO: support Try before working on this
+        #     assert len(ast.items) == 1
+        #
+        #     expr_context = ExpressionConversionContext(self, variableStates)
+        #
+        #     arg = expr_context.convert_expression_ast(ast.items[0].context_expr)
+        #
+        #     if arg is None:
+        #         return expr_context.finalize(None, exceptionsTakeFrom=ast), False
+        #
+        #     withResponse = arg.convert_context_manager_enter()
+        #
+        #     if withResponse is None:
+        #         return expr_context.finalize(None, exceptionsTakeFrom=ast), False
+        #
+        #     if ast.items[0].optional_vars is not None:
+        #         self.assignToLocalVariable(ast.items[0].optional_vars.id, withResponse, variableStates)
+        #
+        #     true, true_returns = self.convert_statement_list_ast(ast.body, variableStates)
+        #
+        #     exit_context = ExpressionConversionContext(self, variableStates)
+        #     # a001 = exit_context.pushLet(str, exit_context.constant("a").expr, true)
+        #
+        #     arg.changeContext(exit_context).convert_context_manager_exit(
+        #         [exit_context.constant(None) for _ in range(3)]
+        #         # [a001, a001, a001]
+        #     )
+        #     # with cond_context.ifelse(is_populated.nonref_expr) as (if_true, if_false):
+        #     #     with if_true:
+        #     #         runtime_functions.clear_exception.call()
+        #
+        #     expr = native_ast.Expression.Finally(
+        #         expr=expr_context.finalize(true, exceptionsTakeFrom=ast),
+        #         teardowns=[native_ast.Teardown.Always(expr=exit_context.finalize(None, exceptionsTakeFrom=ast))]
+        #     )
+        #     expr = native_ast.Expression.TryCatch(
+        #         expr=expr,
+        #         varname="x",
+        #         handler=runtime_functions.fetch_exception2.call(
+        #             native_ast.const_uint64_expr(0).cast(VoidPtr),
+        #             native_ast.const_uint64_expr(0).cast(VoidPtr),
+        #             native_ast.const_uint64_expr(0).cast(VoidPtr)
+        #         )
+        #     )
+        #     return (expr, true_returns)
 
         if ast.matches.Assert:
             expr_context = ExpressionConversionContext(self, variableStates)

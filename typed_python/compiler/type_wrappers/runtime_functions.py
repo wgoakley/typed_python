@@ -120,14 +120,6 @@ fetch_exception = externalCallTarget(
     Void.pointer()
 )
 
-fetch_exception2 = externalCallTarget(
-    "np_fetch_exception2",
-    Void,
-    Void.pointer(),
-    Void.pointer(),
-    Void.pointer()
-)
-
 builtin_pyobj_by_name = externalCallTarget(
     "np_builtin_pyobj_by_name",
     Void.pointer(),
