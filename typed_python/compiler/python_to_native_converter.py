@@ -207,7 +207,7 @@ class PythonToNativeConverter(object):
             body,
             input_types,
             output_type,
-            funcCode.co_freevars,
+            [x for x in funcCode.co_freevars if x not in funcGlobals],
             funcGlobals
         )
 

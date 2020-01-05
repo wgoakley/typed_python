@@ -145,6 +145,8 @@ public:
             PyObject* pyFuncGlobals,
             PyObject* pyFuncDefaults,
             PyObject* pyFuncAnnotations,
+            const std::map<std::string, PyObject*> pyFuncGlobalsInCells,
+            const std::vector<std::string> pyFuncClosureVarnames,
             NamedTuple* closureType,
             Type* returnType,
             const std::vector<FunctionArg>& args
@@ -153,6 +155,8 @@ public:
                 mFunctionGlobals(incref(pyFuncGlobals)),
                 mFunctionDefaults(incref(pyFuncDefaults)),
                 mFunctionAnnotations(incref(pyFuncAnnotations)),
+                mFunctionGlobalsInCells(pyFuncGlobalsInCells),
+                mFunctionClosureVarnames(pyFuncClosureVarnames),
                 mReturnType(returnType),
                 mArgs(args),
                 mCompiledCodePtr(nullptr),
@@ -314,6 +318,9 @@ public:
             if (mFunctionGlobals < other.mFunctionGlobals) { return true; }
             if (mFunctionGlobals > other.mFunctionGlobals) { return false; }
 
+            if (mFunctionGlobalsInCells < other.mFunctionGlobalsInCells) { return true; }
+            if (mFunctionGlobalsInCells > other.mFunctionGlobalsInCells) { return false; }
+
             if (mClosureType < other.mClosureType) { return true; }
             if (mClosureType > other.mClosureType) { return false; }
 
@@ -338,6 +345,10 @@ public:
             return mFunctionGlobals;
         }
 
+        const std::map<std::string, PyObject*> getFunctionGlobalsInCells() const {
+            return mFunctionGlobalsInCells;
+        }
+
         // create a new function object for this closure (or cache it
         // if we have no closure)
         PyObject* buildFunctionObj(instance_ptr self) const;
@@ -346,6 +357,17 @@ public:
         PyObject* mFunctionCode;
 
         PyObject* mFunctionGlobals;
+
+        // globals that are stored in cells. This happens when class objects
+        // are defined inside of function scopes. We assume that anything in their
+        // closure is global (and therefore constant) but it may not be defined yet,
+        // so we can't just pull the value out and stick it in the function closure
+        // itself. Each value in the map is guaranteed to be a 'cell' object.
+        std::map<std::string, PyObject*> mFunctionGlobalsInCells;
+
+        // the order (by name) of the variables in the __closure__ of the original
+        // function. This is the order that the python code will expect.
+        std::vector<std::string> mFunctionClosureVarnames;
 
         PyObject* mFunctionDefaults;
 

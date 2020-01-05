@@ -13,7 +13,8 @@
 #   limitations under the License.
 
 import unittest
-from typed_python import Function, NamedTuple, bytecount
+import time
+from typed_python import Function, NamedTuple, bytecount, ListOf, DisableCompiledCode
 from typed_python.compiler.runtime import RuntimeEventVisitor, Entrypoint
 
 
@@ -147,3 +148,181 @@ class TestCompilingClosures(unittest.TestCase):
             return f(arg)
 
         self.assertEqual(callIt(20), 30)
+
+    def test_passing_closures_as_arguments(self):
+        x = 10
+        @Function
+        def f(y):
+            return y + x
+
+        @Entrypoint
+        def callIt(f, arg):
+            return f(arg)
+
+        self.assertEqual(callIt(f, 20), 30)
+
+    def test_calling_closures_perf(self):
+        ct = 100000
+
+        aList1 = ListOf(int)([])
+
+        def makeAppender(l):
+            @Function
+            def append(y):
+                l.append(y)
+            return append
+
+        @Entrypoint
+        def callManyTimes(c1, ct):
+            for i in range(ct):
+                c1(i)
+
+        callManyTimes(makeAppender(aList1), ct)
+
+        aList1.clear()
+
+        t0 = time.time()
+        callManyTimes(makeAppender(aList1), ct)
+        t1 = time.time()
+
+        aList1.clear()
+
+        elapsedCompiled = t1 - t0
+
+        with DisableCompiledCode():
+            t0 = time.time()
+            callManyTimes(makeAppender(aList1), ct)
+            t1 = time.time()
+
+        elapsedNoncompiled = t1 - t0
+
+        aList1 = []
+
+        def makeAppender(l):
+            def append(y):
+                l.append(y)
+            return append
+
+        def alternatingCall(c1, c2, ct):
+            for i in range(ct):
+                c1(i)
+
+        t0 = time.time()
+        callManyTimes(makeAppender(aList1), ct)
+        t1 = time.time()
+
+        elapsedNontyped = t1 - t0
+
+        print(elapsedCompiled, elapsedNoncompiled, elapsedNontyped)
+
+        print(elapsedNontyped / elapsedCompiled, " times faster")
+        # for me, the compiled form is about 280 times faster than the uncompiled form
+        self.assertTrue(elapsedCompiled * 50 < elapsedNontyped)
+
+    def test_assigning_closures_as_values(self):
+        ct = 100000
+
+        aList1 = ListOf(int)([])
+        aList2 = ListOf(int)([])
+
+        def makeAppender(l):
+            @Function
+            def append(y):
+                l.append(y)
+            return append
+
+        @Entrypoint
+        def alternatingCall(c1, c2, ct):
+            for i in range(ct):
+                c1(i)
+                temp = c1
+                c1 = c2
+                c2 = temp
+
+        c1 = makeAppender(aList1)
+        c2 = makeAppender(aList2)
+
+        self.assertEqual(type(c1), type(c2))
+
+        alternatingCall(c1, c2, ct)
+
+        self.assertEqual(len(aList1), ct // 2)
+        self.assertEqual(len(aList2), ct // 2)
+
+        aList1.clear()
+        aList2.clear()
+
+        t0 = time.time()
+        alternatingCall(c1, c2, ct)
+        t1 = time.time()
+
+        aList1.clear()
+        aList2.clear()
+
+        elapsedCompiled = t1 - t0
+
+        with DisableCompiledCode():
+            t0 = time.time()
+            alternatingCall(c1, c2, ct)
+            t1 = time.time()
+
+        # elapsedNoncompiled = t1 - t0
+
+        aList1 = []
+        aList2 = []
+
+        def makeAppender(l):
+            def append(y):
+                l.append(y)
+            return append
+
+        def alternatingCall(c1, c2, ct):
+            for i in range(ct):
+                c1(i)
+                temp = c1
+                c1 = c2
+                c2 = temp
+
+        c1 = makeAppender(aList1)
+        c2 = makeAppender(aList2)
+
+        t0 = time.time()
+        alternatingCall(c1, c2, ct)
+        t1 = time.time()
+
+        elapsedNontyped = t1 - t0
+
+        # for me, elapsedCompiled is 3x faster than elapsedNontyped, but
+        # elapsedNoncompiled is about 5x slower than elapsedNontyped, because
+        # typed python is not very efficient yet as an interpreter.
+        # there is a _lot_ of overhead in repeatedly swapping because we
+        # end up increffing the contained list many many times.
+        self.assertTrue(elapsedCompiled * 2 < elapsedNontyped)
+
+    def test_closure_in_listof(self):
+        def makeAdder(x):
+            @Function
+            def f(y):
+                return x + y
+            return f
+
+        self.assertEqual(type(makeAdder(10)), type(makeAdder(20)))
+
+        T = ListOf(type(makeAdder(10)))
+
+        aList = T()
+        aList.append(makeAdder(1))
+        aList.append(makeAdder(2))
+
+        def callEachItemManyTimes(l, times):
+            res = 0
+            for count in range(times):
+                for item in l:
+                    res = item(res)
+            return res
+
+        resUncompiled = callEachItemManyTimes(aList, 10)
+
+        resCompiled = Entrypoint(callEachItemManyTimes)(aList, 10)
+
+        self.assertEqual(resUncompiled, resCompiled)

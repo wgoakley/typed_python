@@ -55,7 +55,7 @@ class Final:
 
 def closurePassingType(x):
     """Determine the type we'll use to represent 'x' in a closure."""
-    if isinstance(x, (type, ModuleType)):
+    if isinstance(x, (type, ModuleType, FunctionType)):
         return typed_python.Value(x)
 
     return type(x)
@@ -122,7 +122,7 @@ magicMethodTypes = {
 }
 
 
-def makeFunctionType(name, f, classType=None):
+def makeFunctionType(name, f, isMethod=False, ignoreAnnotations=False, assumeClosuresGlobal=False):
     if isinstance(f, typed_python._types.Function):
         return type(f)
 
@@ -133,6 +133,9 @@ def makeFunctionType(name, f, classType=None):
 
     def getAnn(argname):
         """ Return the annotated type for the given argument or None. """
+        if ignoreAnnotations:
+            return None
+
         if argname not in spec.annotations:
             return None
         else:
@@ -162,13 +165,13 @@ def makeFunctionType(name, f, classType=None):
 
     return_type = None
 
-    if 'return' in spec.annotations:
+    if 'return' in spec.annotations and not ignoreAnnotations:
         ann = spec.annotations.get('return')
         if ann is None:
             ann = type(None)
         return_type = ann
 
-    if classType is not None and name in magicMethodTypes:
+    if isMethod and name in magicMethodTypes:
         tgtType = magicMethodTypes[name]
 
         if return_type is None:
@@ -187,7 +190,7 @@ def makeFunctionType(name, f, classType=None):
     if spec.varkw is not None:
         arg_types.append((spec.varkw, getAnn(spec.varkw), None, False, True))
 
-    return typed_python._types.Function(name, return_type, f, tuple(arg_types))
+    return typed_python._types.Function(name, return_type, f, tuple(arg_types), assumeClosuresGlobal)
 
 
 class ClassMetaclass(type):
@@ -209,21 +212,19 @@ class ClassMetaclass(type):
         classMembers = []
         properties = {}
 
-        actualClass = typed_python._types.Forward(name)
-
         for eltName, elt in namespace.order:
             if isinstance(elt, Member):
                 members.append((eltName, elt._type, elt._default_value))
                 classMembers.append((eltName, elt))
             elif isinstance(elt, property):
-                properties[eltName] = makeFunctionType(eltName, elt.fget)
+                properties[eltName] = makeFunctionType(eltName, elt.fget, assumeClosuresGlobal=True)
             elif isinstance(elt, staticmethod):
                 if eltName not in staticFunctions:
-                    staticFunctions[eltName] = makeFunctionType(eltName, elt.__func__)
+                    staticFunctions[eltName] = makeFunctionType(eltName, elt.__func__, assumeClosuresGlobal=True)
                 else:
                     staticFunctions[eltName] = typed_python._types.Function(
                         staticFunctions[eltName],
-                        makeFunctionType(eltName, elt.__func__)
+                        makeFunctionType(eltName, elt.__func__, assumeClosuresGlobal=True)
                     )
             elif (
                 isinstance(elt, FunctionType)
@@ -231,16 +232,16 @@ class ClassMetaclass(type):
                 or isinstance(elt, type) and issubclass(elt, typed_python._types.Function)
             ):
                 if eltName not in memberFunctions:
-                    memberFunctions[eltName] = makeFunctionType(eltName, elt, actualClass)
+                    memberFunctions[eltName] = makeFunctionType(eltName, elt, isMethod=True, assumeClosuresGlobal=True)
                 else:
                     memberFunctions[eltName] = typed_python._types.Function(
                         memberFunctions[eltName],
-                        makeFunctionType(eltName, elt, actualClass)
+                        makeFunctionType(eltName, elt, isMethod=True, assumeClosuresGlobal=True)
                     )
             else:
                 classMembers.append((eltName, elt))
 
-        actualClass = actualClass.define(typed_python._types.Class(
+        return typed_python._types.Class(
             name,
             tuple(bases),
             isFinal,
@@ -249,9 +250,7 @@ class ClassMetaclass(type):
             tuple(staticFunctions.items()),
             tuple(properties.items()),
             tuple(classMembers)
-        ))
-
-        return actualClass
+        )
 
 
 def Function(f):
@@ -300,7 +299,7 @@ class FunctionOverloadArg:
 
 
 class FunctionOverload:
-    def __init__(self, functionTypeObject, index, code, funcGlobals, closureType, returnType):
+    def __init__(self, functionTypeObject, index, code, funcGlobals, funcGlobalsInCells, closureType, returnType):
         """Initialize a FunctionOverload.
 
         Args:
@@ -308,6 +307,7 @@ class FunctionOverload:
             index - the index within the _types.Function sequence of overloads we represent
             code - the code object for the function we're wrapping
             funcGlobals - the globals for the function we're wrapping
+            funcGlobalsInCells - a dict of cells that also act like globals
             closureType - a NamedTuple containing the types non-global variables bound by
                 this closure.
             returnType - the return type annotation, or None if None provided. (if None was
@@ -318,6 +318,7 @@ class FunctionOverload:
         self.closureType = closureType
         self.functionCode = code
         self.functionGlobals = funcGlobals
+        self.funcGlobalsInCells = funcGlobalsInCells
         self.returnType = returnType
         self.args = ()
 

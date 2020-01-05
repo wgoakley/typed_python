@@ -185,13 +185,18 @@ class FunctionConversionContext(object):
     def _constructInitialVarnameToType(self):
         input_types = self._input_types
 
+        self._argnames = list(self._closureVarnames) + list(self._ast_arg.argumentNames())
+
         if len(input_types) != self._ast_arg.totalArgCount() + len(self._closureVarnames):
             raise ConversionException(
-                "Expected at least %s arguments but got %s" %
-                (len(self._ast_arg.args), len(input_types))
+                "%s expected at least %s arguments but got %s. Expected argnames are %s. Input types are %s" %
+                (
+                    self.name,
+                    self._ast_arg.totalArgCount() + len(self._closureVarnames),
+                    len(input_types),
+                    self._argnames, input_types
+                )
             )
-
-        self._argnames = list(self._closureVarnames) + list(self._ast_arg.argumentNames())
 
         self._native_args = []
         for i, argName in enumerate(self._argnames):

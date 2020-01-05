@@ -635,246 +635,269 @@ PyObject* PyClassInstance::tp_iternext_concrete() {
 
 // static
 PyObject* PyClassInstance::clsFormat(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) != 1 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__format__ invalid number of parameters");
-        return NULL;
-    }
-    PyObjectStealer arg0(PyTuple_GetItem(args, 0));
+        if (PyTuple_Size(args) != 1 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__format__ invalid number of parameters");
+            return NULL;
+        }
+        PyObjectStealer arg0(PyTuple_GetItem(args, 0));
 
-    auto result = self->callMemberFunction("__format__", arg0);
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__format__ not defined for type %s", self->type()->name().c_str());
-        return NULL;
-    }
-    if (!PyUnicode_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__format__ returned non-string for type %s", self->type()->name().c_str());
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__format__", arg0);
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__format__ not defined for type %s", self->type()->name().c_str());
+            return NULL;
+        }
+        if (!PyUnicode_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__format__ returned non-string for type %s", self->type()->name().c_str());
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsBytes(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__bytes__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__bytes__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__bytes__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__bytes__ not defined for type %s", self->type()->name().c_str());
-        return NULL;
-    }
-    if (!PyBytes_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__bytes__ returned non-bytes %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__bytes__");
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__bytes__ not defined for type %s", self->type()->name().c_str());
+            return NULL;
+        }
+        if (!PyBytes_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__bytes__ returned non-bytes %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsDir(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__dir__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__dir__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__dir__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__dir__ missing");
-        return NULL;
-    }
-    if (!PySequence_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__dir__ returned non-sequence %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__dir__");
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__dir__ missing");
+            return NULL;
+        }
+        if (!PySequence_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__dir__ returned non-sequence %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsReversed(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__reversed__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__reversed__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__reversed__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__reversed__ missing");
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__reversed__");
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__reversed__ missing");
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsComplex(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__complex__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__complex__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__complex__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__complex__ missing");
-        return NULL;
-    }
-    if (!PyComplex_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__complex__ returned non-complex %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__complex__");
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__complex__ missing");
+            return NULL;
+        }
+        if (!PyComplex_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__complex__ returned non-complex %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsRound(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 1 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__round__ invalid number of parameters %d %d", PyTuple_Size(args), kwargs);
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 1 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__round__ invalid number of parameters %d %d", PyTuple_Size(args), kwargs);
+            return NULL;
+        }
 
-    if (PyTuple_Size(args) == 1) {
-        PyObjectStealer arg0(PyTuple_GetItem(args, 0));
-        auto result = self->callMemberFunction("__round__", arg0);
+        if (PyTuple_Size(args) == 1) {
+            PyObjectStealer arg0(PyTuple_GetItem(args, 0));
+            auto result = self->callMemberFunction("__round__", arg0);
+            if (!result.first) {
+                PyErr_Format(PyExc_TypeError, "__round__ missing");
+                return NULL;
+            }
+            return result.second;
+        }
+
+        auto result = self->callMemberFunction("__round__");
         if (!result.first) {
             PyErr_Format(PyExc_TypeError, "__round__ missing");
             return NULL;
         }
+        if (!PyLong_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__round__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
+            return NULL;
+        }
+
         return result.second;
-    }
-
-    auto result = self->callMemberFunction("__round__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__round__ missing");
-        return NULL;
-    }
-    if (!PyLong_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__round__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
-        return NULL;
-    }
-
-    return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsTrunc(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__trunc__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__trunc__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__trunc__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__trunc__ missing");
-        return NULL;
-    }
-    if (!PyLong_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__trunc__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__trunc__");
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__trunc__ missing");
+            return NULL;
+        }
+        if (!PyLong_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__trunc__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsFloor(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__floor__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__floor__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__floor__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__floor__ missing");
-        return NULL;
-    }
-    if (!PyLong_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__floor__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__floor__");
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__floor__ missing");
+            return NULL;
+        }
+        if (!PyLong_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__floor__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsCeil(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__ceil__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__ceil__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__ceil__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__ceil__ missing");
-        return NULL;
-    }
-    if (!PyLong_Check(result.second)) {
-        PyErr_Format(PyExc_TypeError, "__ceil__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__ceil__");
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__ceil__ missing");
+            return NULL;
+        }
+        if (!PyLong_Check(result.second)) {
+            PyErr_Format(PyExc_TypeError, "__ceil__ returned non-integer %s for type %s", result.second->ob_type->tp_name, self->type()->name().c_str());
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsEnter(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) > 0 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__enter__ invalid number of parameters");
-        return NULL;
-    }
+        if (PyTuple_Size(args) > 0 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__enter__ invalid number of parameters");
+            return NULL;
+        }
 
-    auto result = self->callMemberFunction("__enter__");
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__enter__ missing");
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__enter__");
 
-    return result.second;
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__enter__ missing");
+            return NULL;
+        }
+
+        return result.second;
+    });
 }
 
 // static
 PyObject* PyClassInstance::clsExit(PyObject* o, PyObject* args, PyObject* kwargs) {
-    PyClassInstance* self = (PyClassInstance*)o;
+    return translateExceptionToPyObject([&]() -> PyObject* {
+        PyClassInstance* self = (PyClassInstance*)o;
 
-    if (PyTuple_Size(args) != 3 || kwargs) {
-        PyErr_Format(PyExc_TypeError, "__exit__ invalid number of parameters");
-        return NULL;
-    }
-    PyObjectStealer arg0(PyTuple_GetItem(args, 0));
-    PyObjectStealer arg1(PyTuple_GetItem(args, 1));
-    PyObjectStealer arg2(PyTuple_GetItem(args, 2));
+        if (PyTuple_Size(args) != 3 || kwargs) {
+            PyErr_Format(PyExc_TypeError, "__exit__ invalid number of parameters");
+            return NULL;
+        }
+        PyObjectStealer arg0(PyTuple_GetItem(args, 0));
+        PyObjectStealer arg1(PyTuple_GetItem(args, 1));
+        PyObjectStealer arg2(PyTuple_GetItem(args, 2));
 
-    auto result = self->callMemberFunction("__exit__", arg0, arg1, arg2);
-    if (!result.first) {
-        PyErr_Format(PyExc_TypeError, "__exit__ missing");
-        return NULL;
-    }
+        auto result = self->callMemberFunction("__exit__", arg0, arg1, arg2);
+        if (!result.first) {
+            PyErr_Format(PyExc_TypeError, "__exit__ missing");
+            return NULL;
+        }
 
-    return result.second;
+        return result.second;
+    });
 }
 
 // static

@@ -86,6 +86,6 @@ public:
 
     static PyObject* resultTypeFor(PyObject* funcObj, PyObject* args, PyObject* kwargs);
 
-    static Function* convertPythonObjectToFunction(PyObject* name, PyObject *funcObj);
+    static Function* convertPythonObjectToFunction(PyObject* name, PyObject *funcObj, bool assumeClosuresGlobal);
 
 };

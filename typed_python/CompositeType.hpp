@@ -219,6 +219,9 @@ public:
     }
 
     static NamedTuple* Make(const std::vector<Type*>& types, const std::vector<std::string>& names, NamedTuple* knownType = nullptr) {
+        if (names.size() != types.size()) {
+            throw std::runtime_error("Names mismatched with types!");
+        }
         return MakeSubtype<NamedTuple>(types, names, knownType);
     }
 };

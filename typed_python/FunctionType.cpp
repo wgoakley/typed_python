@@ -27,44 +27,70 @@ PyObject* Function::Overload::buildFunctionObj(instance_ptr self) const {
 
     int closureVarCount = PyCode_GetNumFree((PyCodeObject*)mFunctionCode);
 
+    if (mFunctionClosureVarnames.size() != closureVarCount) {
+        throw std::runtime_error("Invalid closure: wrong number of cells.");
+    }
+
     if (closureVarCount) {
-        if (mClosureType->bytecount() != 0) {
-            if (self == nullptr) {
-                throw std::runtime_error("Expected a populated closure");
+        // for the moment, assume 'globals in cells' is all-or-nothing.
+        if (mFunctionGlobalsInCells.size()) {
+            if (mFunctionGlobalsInCells.size() != closureVarCount) {
+                throw std::runtime_error("Invalid closure: wrong number of cells.");
             }
-        }
 
-        PyObjectStealer closureTup(PyTuple_New(closureVarCount));
+            PyObjectStealer closureTup(PyTuple_New(closureVarCount));
 
-        if (closureVarCount != mClosureType->getTypes().size()) {
-            throw std::runtime_error("Invalid closure: wrong number of cells.");
-        }
-
-        for (long k = 0; k < closureVarCount; k++) {
-            try {
-                PyObjectStealer asPyObj(
-                    PyInstance::extractPythonObject(
-                        self + mClosureType->getOffsets()[k],
-                        mClosureType->getTypes()[k]
-                    )
+            for (long k = 0; k < closureVarCount; k++) {
+                PyTuple_SetItem(
+                    (PyObject*)closureTup,
+                    k,
+                    incref(mFunctionGlobalsInCells.find(mFunctionClosureVarnames[k])->second)
                 );
-
-                if (!asPyObj) {
-                    throw PythonExceptionSet();
-                }
-
-                PyTuple_SetItem((PyObject*)closureTup, k, PyCell_New(asPyObj));
-            } catch(...) {
-                // make sure the tuple is populated before ripping it down
-                for (long j = k; j < closureVarCount; j++) {
-                    PyTuple_SetItem((PyObject*)closureTup, j, incref(Py_None));
-                }
-                throw;
             }
-        }
 
-        if (PyFunction_SetClosure(res, (PyObject*)closureTup) == -1) {
-            throw PythonExceptionSet();
+            if (PyFunction_SetClosure(res, (PyObject*)closureTup) == -1) {
+                throw PythonExceptionSet();
+            }
+
+        } else {
+            if (mClosureType->bytecount() != 0) {
+                if (self == nullptr) {
+                    throw std::runtime_error("Expected a populated closure");
+                }
+            }
+
+            if (closureVarCount != mClosureType->getTypes().size()) {
+                throw std::runtime_error("Invalid closure: wrong number of cells.");
+            }
+
+            PyObjectStealer closureTup(PyTuple_New(closureVarCount));
+
+            for (long k = 0; k < closureVarCount; k++) {
+                try {
+                    PyObjectStealer asPyObj(
+                        PyInstance::extractPythonObject(
+                            self + mClosureType->getOffsets()[k],
+                            mClosureType->getTypes()[k]
+                        )
+                    );
+
+                    if (!asPyObj) {
+                        throw PythonExceptionSet();
+                    }
+
+                    PyTuple_SetItem((PyObject*)closureTup, k, PyCell_New(asPyObj));
+                } catch(...) {
+                    // make sure the tuple is populated before ripping it down
+                    for (long j = k; j < closureVarCount; j++) {
+                        PyTuple_SetItem((PyObject*)closureTup, j, incref(Py_None));
+                    }
+                    throw;
+                }
+            }
+
+            if (PyFunction_SetClosure(res, (PyObject*)closureTup) == -1) {
+                throw PythonExceptionSet();
+            }
         }
     }
 

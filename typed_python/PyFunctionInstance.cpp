@@ -340,13 +340,22 @@ PyObject* PyFunctionInstance::createOverloadPyRepresentation(Function* f) {
 
         PyObjectStealer pyIndex(PyLong_FromLong(k));
 
+        PyObjectStealer pyGlobalCellDict(PyDict_New());
+
+        for (auto nameAndCell: overload.getFunctionGlobalsInCells()) {
+            PyDict_SetItemString(pyGlobalCellDict, nameAndCell.first.c_str(), nameAndCell.second);
+        }
+
         PyObjectStealer pyOverloadInst(
+            //PyObject_CallFunctionObjArgs is a macro, so we have to force all the 'stealers'
+            //to have type (PyObject*)
             PyObject_CallFunctionObjArgs(
                 funcOverload,
                 typePtrToPyTypeRepresentation(f),
                 (PyObject*)pyIndex,
                 (PyObject*)overload.getFunctionCode(),
                 (PyObject*)overload.getFunctionGlobals(),
+                (PyObject*)pyGlobalCellDict,
                 (PyObject*)typePtrToPyTypeRepresentation(overload.getClosureType()),
                 overload.getReturnType() ? (PyObject*)typePtrToPyTypeRepresentation(overload.getReturnType()) : Py_None,
                 NULL
@@ -522,7 +531,7 @@ PyObject* PyFunctionInstance::withEntrypoint(PyObject* funcObj, PyObject* args, 
 
     resType = resType->withEntrypoint(isWithEntrypoint);
 
-    return PyInstance::initialize(resType, [&](instance_ptr p) {});
+    return PyInstance::extractPythonObject(((PyInstance*)funcObj)->dataPtr(), resType);
 }
 
 /* static */
@@ -554,7 +563,7 @@ PyObject* PyFunctionInstance::overload(PyObject* funcObj, PyObject* args, PyObje
                         throw PythonExceptionSet();
                     }
 
-                    argT = convertPythonObjectToFunction(name, arg);
+                    argT = convertPythonObjectToFunction(name, arg, false);
                 }
 
                 if (!argT) {
@@ -623,7 +632,7 @@ PyMethodDef* PyFunctionInstance::typeMethodsConcrete(Type* t) {
     };
 }
 
-Function* PyFunctionInstance::convertPythonObjectToFunction(PyObject* name, PyObject *funcObj) {
+Function* PyFunctionInstance::convertPythonObjectToFunction(PyObject* name, PyObject *funcObj, bool assumeClosuresGlobal) {
     static PyObject* internalsModule = PyImport_ImportModule("typed_python.internals");
 
     if (!internalsModule) {
@@ -638,7 +647,14 @@ Function* PyFunctionInstance::convertPythonObjectToFunction(PyObject* name, PyOb
         return nullptr;
     }
 
-    PyObject* fRes = PyObject_CallFunctionObjArgs(makeFunctionType, name, funcObj, NULL);
+    PyObjectStealer args(PyTuple_Pack(2, name, funcObj));
+    PyObjectStealer kwargs(PyDict_New());
+
+    if (assumeClosuresGlobal) {
+        PyDict_SetItemString(kwargs, "assumeClosuresGlobal", Py_True);
+    }
+
+    PyObject* fRes = PyObject_Call(makeFunctionType, args, kwargs);
 
     if (!fRes) {
         return nullptr;

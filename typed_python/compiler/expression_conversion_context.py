@@ -28,6 +28,7 @@ from typed_python import NoneType, Alternative, OneOf, Int32, ListOf, String, Tu
 from typed_python._types import getTypePointer
 from typed_python.compiler.type_wrappers.named_tuple_masquerading_as_dict_wrapper import NamedTupleMasqueradingAsDict
 from typed_python.compiler.type_wrappers.typed_tuple_masquerading_as_tuple_wrapper import TypedTupleMasqueradingAsTuple
+from typed_python import bytecount
 
 builtinValueIdToNameAndValue = {id(v): (k, v) for k, v in __builtins__.items()}
 
@@ -957,13 +958,66 @@ class ExpressionConversionContext(object):
         if concreteArgs is None:
             return None
 
-        call_target = self.functionContext.converter.convert(f, [a.expr_type for a in concreteArgs], returnTypeOverload)
+        funcGlobals = dict(f.__globals__)
+
+        if f.__closure__:
+            for i in range(len(f.__closure__)):
+                funcGlobals[f.__code__.co_freevars[i]] = f.__closure__[i].cell_contents
+
+        call_target = self.functionContext.converter.convert(
+            f.__name__,
+            f.__code__,
+            funcGlobals,
+            [a.expr_type for a in concreteArgs],
+            returnTypeOverload
+        )
 
         if call_target is None:
             self.pushException(TypeError, "Function %s was not convertible." % f.__qualname__)
             return
 
         return self.call_typed_call_target(call_target, concreteArgs)
+
+    def call_overload(self, overload, funcObj, args, kwargs, returnTypeOverload=None):
+        concreteArgs = self.buildFunctionArguments(overload, args, kwargs)
+
+        if concreteArgs is None:
+            return None
+
+        if funcObj is not None:
+            closureTuple = funcObj.changeType(funcObj.expr_type.closureWrapper).refAs(overload.index)
+        else:
+            # if the overload has an empty closure, then callers can just pass 'None'.
+            # check to make sure it's really an empty closure. This happens with
+            # things like class methods, which are expected to be entirely static.
+            assert bytecount(overload.closureType) == 0
+            closureTuple = self.push(typeWrapper(overload.closureType), lambda x: None)
+
+        closureArgs = [
+            closureTuple.refAs(i)
+            for i in range(len(closureTuple.expr_type.typeRepresentation.ElementTypes))
+        ]
+
+        functionGlobals = dict(overload.functionGlobals)
+        for varname, cell in overload.funcGlobalsInCells.items():
+            functionGlobals[varname] = cell.cell_contents
+
+        call_target = self.functionContext.converter.convert(
+            overload.name,
+            overload.functionCode,
+            functionGlobals,
+            [typeWrapper(t) for t in overload.closureType.ElementTypes]
+            + [a.expr_type for a in concreteArgs],
+            returnTypeOverload if returnTypeOverload is not None else
+            typeWrapper(overload.returnType) if overload.returnType is not None else
+            None
+        )
+
+        if call_target is None:
+            self.pushException(TypeError, "Function %s was not convertible." % overload.name)
+            return
+
+        return self.call_typed_call_target(call_target, closureArgs + concreteArgs)
 
     def call_typed_call_target(self, call_target, args):
         # force arguments to a type appropriate for argpassing
@@ -981,7 +1035,10 @@ class ExpressionConversionContext(object):
             return
 
         if call_target.output_type.is_pass_by_ref:
-            assert len(call_target.named_call_target.arg_types) == len(native_args)
+            assert len(call_target.named_call_target.arg_types) == len(native_args) + 1, "\n\n%s\n%s" % (
+                call_target.named_call_target.arg_types,
+                [a.expr_type for a in args]
+            )
 
             return self.push(
                 call_target.output_type,

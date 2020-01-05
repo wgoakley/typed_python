@@ -17,7 +17,7 @@ import traceback
 import unittest
 from flaky import flaky
 
-from typed_python import Function, OneOf, TupleOf, ListOf, Tuple, NamedTuple, Class, _types, Compiled
+from typed_python import Function, OneOf, TupleOf, ListOf, Tuple, NamedTuple, Class, _types, Compiled, NoneType
 from typed_python.compiler.runtime import Runtime, Entrypoint
 
 
@@ -341,6 +341,17 @@ class TestCompilationStructures(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "Can't apply op Add.. to expressions of type NoneType"):
             throws(1)
 
+    def test_return_none(self):
+        def f(x):
+            return x
+
+        @Compiled
+        def g():
+            return f(None)
+
+        self.assertEqual(g.resultTypeFor().typeRepresentation, NoneType)
+        self.assertEqual(g(), None)
+
     def test_assign_with_none(self):
         def f(x):
             return x
@@ -468,10 +479,6 @@ class TestCompilationStructures(unittest.TestCase):
             self.assertIn('aFunctionThatRaises', trace)
 
     def test_stacktraces_show_up(self):
-        @Entrypoint
-        def f1(x):
-            return f2(x)
-
         def f2(x):
             return f3(x)
 
@@ -480,6 +487,10 @@ class TestCompilationStructures(unittest.TestCase):
 
         def f4(x):
             raise Exception(f"X is {x}")
+
+        @Entrypoint
+        def f1(x):
+            return f2(x)
 
         try:
             f1("hihi")

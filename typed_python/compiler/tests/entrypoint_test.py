@@ -420,8 +420,8 @@ class TestCompileSpecializedEntrypoints(unittest.TestCase):
         with Visitor():
             f.resultTypeFor(int)
 
-        self.assertTrue(f.overloads[0].functionObj in out, out)
-        self.assertEqual(out[f.overloads[0].functionObj][2]['y'], Int64)
+        self.assertTrue(f.overloads[0].functionCode in out, out)
+        self.assertEqual(out[f.overloads[0].functionCode][2]['y'], Int64)
 
     def test_star_args_on_entrypoint(self):
         @Entrypoint

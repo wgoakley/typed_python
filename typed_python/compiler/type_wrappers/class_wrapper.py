@@ -20,7 +20,7 @@ from typed_python.compiler.type_wrappers.arithmetic_wrapper import FloatWrapper,
 from typed_python.compiler.type_wrappers.one_of_wrapper import OneOfWrapper
 import typed_python.compiler.type_wrappers.runtime_functions as runtime_functions
 
-from typed_python import NoneType, _types, PointerTo, Bool, Int32, Tuple, NamedTuple
+from typed_python import NoneType, _types, PointerTo, Bool, Int32, Tuple, NamedTuple, bytecount
 
 import typed_python.compiler.native_ast as native_ast
 import typed_python.compiler
@@ -697,7 +697,9 @@ class ClassWrapper(RefcountedWrapper):
         # in the inputs and less precise in the outputs.
         pyImpl = implementingClass.MemberFunctions[methodName]
 
-        typeWrapper(pyImpl).compileCall(converter, retType, argTypes, kwargTypes, callback)
+        assert bytecount(pyImpl.ClosureType) == 0, "Class methods should have empty closures."
+
+        typeWrapper(pyImpl).compileCall(converter, retType, argTypes, kwargTypes, callback, False)
 
         return True
 
@@ -798,7 +800,7 @@ class ClassWrapper(RefcountedWrapper):
 
         if '__init__' in self.typeRepresentation.MemberFunctions:
             initFuncType = typeWrapper(self.typeRepresentation.MemberFunctions['__init__'])
-            initFuncType.convert_call(context, context.pushVoid(initFuncType), (out,) + args, {})
+            initFuncType.convert_call(context, context.push(initFuncType, lambda expr: None), (out,) + args, {})
         else:
             if len(args):
                 context.pushException(

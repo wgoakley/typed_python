@@ -588,7 +588,7 @@ PyObject *MakeBoundMethodType(PyObject* nullValue, PyObject* args) {
 }
 
 PyObject *MakeFunctionType(PyObject* nullValue, PyObject* args) {
-    if (PyTuple_Size(args) != 4 && PyTuple_Size(args) != 2) {
+    if (PyTuple_Size(args) != 5 && PyTuple_Size(args) != 2) {
         PyErr_SetString(PyExc_TypeError, "Function takes 2 or 4 arguments");
         return NULL;
     }
@@ -621,6 +621,12 @@ PyObject *MakeFunctionType(PyObject* nullValue, PyObject* args) {
         PyObjectHolder retType(PyTuple_GetItem(args,1));
         PyObjectHolder funcObj(PyTuple_GetItem(args,2));
         PyObjectHolder argTuple(PyTuple_GetItem(args,3));
+
+        int assumeClosureGlobal = PyObject_IsTrue(PyTuple_GetItem(args,4));
+
+        if (assumeClosureGlobal == -1) {
+            return NULL;
+        }
 
         if (!PyFunction_Check(funcObj)) {
             PyErr_SetString(PyExc_TypeError, "Third arg should be a function object");
@@ -705,6 +711,7 @@ PyObject *MakeFunctionType(PyObject* nullValue, PyObject* args) {
 
         std::vector<std::string> closureVarnames;
         std::vector<Type*> closureVarTypes;
+        std::map<std::string, PyObject*> globalsInCells;
 
         PyObject* closure = PyFunction_GetClosure(funcObj);
 
@@ -734,41 +741,53 @@ PyObject *MakeFunctionType(PyObject* nullValue, PyObject* args) {
                 closureVarnames.push_back(std::string(PyUnicode_AsUTF8(varname)));
             }
 
-            for (long ix = 0; ix < PyTuple_Size(closure); ix++) {
+            if (assumeClosureGlobal) {
+                for (long ix = 0; ix < PyTuple_Size(closure); ix++) {
+                    PyObject* cell = PyTuple_GetItem(closure, ix);
+                    if (!PyCell_Check(cell)) {
+                        PyErr_Format(PyExc_TypeError, "Function closure needs to all be cells.");
+                        return NULL;
+                    }
 
-                PyObject* cell = PyTuple_GetItem(closure, ix);
-                if (!PyCell_Check(cell)) {
-                    PyErr_Format(PyExc_TypeError, "Function closure needs to all be cells.");
-                    return NULL;
+                    globalsInCells[closureVarnames[ix]] = incref(cell);
                 }
+            }
+            else {
+                for (long ix = 0; ix < PyTuple_Size(closure); ix++) {
+                    PyObject* cell = PyTuple_GetItem(closure, ix);
+                    if (!PyCell_Check(cell)) {
+                        PyErr_Format(PyExc_TypeError, "Function closure needs to all be cells.");
+                        return NULL;
+                    }
 
-                PyObject* cellContents = PyCell_GET(cell);
+                    PyObject* cellContents = PyCell_GET(cell);
 
-                if (!cellContents) {
-                    PyErr_Format(
-                        PyExc_TypeError,
-                        "free variable '%s' referenced before assignment in enclosing scope",
-                        closureVarnames[ix].c_str()
-                    );
-                    return nullptr;
+                    if (!cellContents) {
+                        PyErr_Format(
+                            PyExc_TypeError,
+                            "free variable '%s' referenced before assignment in enclosing scope",
+                            closureVarnames[ix].c_str()
+                        );
+                        return nullptr;
+                    }
+
+                    static PyObject* passingTypeFun = PyInstance::getInternalModuleMember("closurePassingType");
+
+                    PyObjectStealer passingType(PyObject_CallFunctionObjArgs(passingTypeFun, cellContents, NULL));
+
+                    if (!passingType) {
+                        return NULL;
+                    }
+
+                    Type* t = PyInstance::tryUnwrapPyInstanceToType(passingType);
+
+                    if (!t) {
+                        PyErr_Format(PyExc_TypeError, "Failed to determine a valid passing type.");
+                        return NULL;
+                    }
+
+                    closureVarTypes.push_back(t);
                 }
-
-                static PyObject* passingTypeFun = PyInstance::getInternalModuleMember("closurePassingType");
-
-                PyObjectStealer passingType(PyObject_CallFunctionObjArgs(passingTypeFun, cellContents, NULL));
-
-                if (!passingType) {
-                    return NULL;
-                }
-
-                Type* t = PyInstance::tryUnwrapPyInstanceToType(passingType);
-
-                if (!t) {
-                    PyErr_Format(PyExc_TypeError, "Failed to determine a valid passing type.");
-                    return NULL;
-                }
-
-                closureVarTypes.push_back(t);
             }
         }
 
@@ -778,7 +797,11 @@ PyObject *MakeFunctionType(PyObject* nullValue, PyObject* args) {
                 PyFunction_GetGlobals(funcObj),
                 PyFunction_GetDefaults(funcObj),
                 PyFunction_GetAnnotations(funcObj),
-                NamedTuple::Make(closureVarTypes, closureVarnames),
+                globalsInCells,
+                closureVarnames,
+                assumeClosureGlobal ?
+                    NamedTuple::Make({}, {}) :
+                    NamedTuple::Make(closureVarTypes, closureVarnames),
                 rType,
                 argList
             )
@@ -1754,7 +1777,7 @@ PyObject *MakeAlternativeType(PyObject* nullValue, PyObject* args, PyObject* kwa
         std::string fieldName(PyUnicode_AsUTF8(key));
 
         if (PyFunction_Check(value)) {
-            functions[fieldName] = PyFunctionInstance::convertPythonObjectToFunction(key, value);
+            functions[fieldName] = PyFunctionInstance::convertPythonObjectToFunction(key, value, true);
             if (functions[fieldName] == nullptr) {
                 //error code is already set
                 return nullptr;
