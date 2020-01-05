@@ -74,6 +74,24 @@ PyObject *MakePointerToType(PyObject* nullValue, PyObject* args) {
     return incref((PyObject*)PyInstance::typeObj(PointerTo::Make(t)));
 }
 
+PyObject *MakeTypedCellType(PyObject* nullValue, PyObject* args) {
+    if (PyTuple_Size(args) != 1) {
+        PyErr_SetString(PyExc_TypeError, "TypedCell takes 1 positional argument.");
+        return NULL;
+    }
+
+    PyObjectHolder tupleItem(PyTuple_GetItem(args, 0));
+
+    Type* t = PyInstance::unwrapTypeArgToTypePtr(tupleItem);
+
+    if (!t) {
+        PyErr_SetString(PyExc_TypeError, "TypedCell needs a type.");
+        return NULL;
+    }
+
+    return incref((PyObject*)PyInstance::typeObj(TypedCellType::Make(t)));
+}
+
 PyObject *MakeTupleOfType(PyObject* nullValue, PyObject* args) {
     return MakeTupleOrListOfType(nullValue, args, true);
 }
@@ -225,6 +243,9 @@ PyObject *MakeNamedTupleType(PyObject* nullValue, PyObject* args, PyObject* kwar
 }
 
 
+PyObject *MakePyCellType(PyObject* nullValue, PyObject* args) {
+    return incref((PyObject*)PyInstance::typeObj(::PyCellType::Make()));
+}
 PyObject *MakeBoolType(PyObject* nullValue, PyObject* args) {
     return incref((PyObject*)PyInstance::typeObj(::Bool::Make()));
 }
@@ -1925,6 +1946,8 @@ PyInit__types(void)
     PyModule_AddObject(module, "Function", (PyObject*)incref(PyInstance::typeCategoryBaseType(Type::TypeCategory::catFunction)));
     PyModule_AddObject(module, "BoundMethod", (PyObject*)incref(PyInstance::typeCategoryBaseType(Type::TypeCategory::catBoundMethod)));
     PyModule_AddObject(module, "EmbeddedMessage", (PyObject*)incref(PyInstance::typeCategoryBaseType(Type::TypeCategory::catEmbeddedMessage)));
+    PyModule_AddObject(module, "TypedCell", (PyObject*)incref(PyInstance::typeCategoryBaseType(Type::TypeCategory::catTypedCell)));
+    PyModule_AddObject(module, "PyCell", (PyObject*)incref(PyInstance::typeCategoryBaseType(Type::TypeCategory::catPyCell)));
     PyModule_AddObject(module, "PythonObjectOfType", (PyObject*)incref(PyInstance::typeCategoryBaseType(Type::TypeCategory::catPythonObjectOfType)));
 
 

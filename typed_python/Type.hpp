@@ -71,6 +71,8 @@ class BoundMethod;
 class Forward;
 class EmbeddedMessageType;
 class SetType;
+class TypedCellType;
+class PyCellType;
 
 typedef uint8_t* instance_ptr;
 
@@ -124,7 +126,9 @@ public:
         catFunction = 30,
         catForward = 31,
         catEmbeddedMessage = 32,
-        catSet = 33
+        catSet = 33,
+        catTypedCell = 34,
+        catPyCell = 35
     };
 
     virtual ~Type() {
@@ -246,6 +250,8 @@ public:
         if (category == Type::TypeCategory::catForward) { return "Forward"; }
         if (category == Type::TypeCategory::catEmbeddedMessage) { return "EmbeddedMessage"; }
         if (category == Type::TypeCategory::catPythonObjectOfType) { return "PythonObjectOfType"; }
+        if (category == Type::TypeCategory::catPyCell) { return "PyCell"; }
+        if (category == Type::TypeCategory::catTypedCell) { return "TypedCell"; }
 
         return "Unknown";
     }
@@ -321,6 +327,10 @@ public:
                 return f(*(Forward*)this);
             case catEmbeddedMessage:
                 return f(*(EmbeddedMessageType*)this);
+            case catPyCell:
+                return f(*(PyCellType*)this);
+            case catTypedCell:
+                return f(*(TypedCellType*)this);
             default:
                 throw std::runtime_error("Invalid type found");
         }
