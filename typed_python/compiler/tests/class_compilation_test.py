@@ -1797,11 +1797,22 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
             finally:
                 ret += "finally"
-                # TODO: in compiled code, ex is still usable here!  ex does not have correct scope!
+                return ret
+
+        def f6(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+            except ZeroDivisionError as ex:
+                ret += "catch " + " " + str(ex) + " "
+            finally:
+                ret += "finally" + str(ex)  # noqa: F821
+                # Ensure that this is detected as error "variable 'ex' referenced before assignment" in compiled case
+                # Previously the exception instance would still be available past the end of exception handler.
             return ret
 
         # TODO: support finally in situation where control flow exits try block
-        def f6(x: int) -> str:
+        def f7(x: int) -> str:
             ret = "start "
             i = 0
             while 1:
@@ -1814,7 +1825,7 @@ class TestClassCompilationCompilation(unittest.TestCase):
                         ret += "finally"
             return ret
 
-        for f in [f0, f1, f2, f3, f4, f5]:
+        for f in [f0, f1, f2, f3, f4, f5, f6]:
             for v in [1, 0]:
                 r1 = result_or_exception(f, v)
                 r2 = result_or_exception(Compiled(f), v)

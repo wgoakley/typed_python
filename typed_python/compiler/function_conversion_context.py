@@ -369,8 +369,8 @@ class FunctionConversionContext(object):
             # make sure we know this variable is new. We'll have to
             # re-execute this converter now that we know about this
             # variable, because right now we generate initializers
-            # for our variables only when the converter excutes
-            # with a stable list of assigned varibles (and types)
+            # for our variables only when the converter executes
+            # with a stable list of assigned variables (and types)
             self.variablesAssigned.add(varname)
             self.markTypesAreUnstable()
 
@@ -774,6 +774,10 @@ class FunctionConversionContext(object):
                 handler, handler_returns = self.convert_statement_list_ast(h.body, variableStates)
                 if h.name is None:
                     handler = runtime_functions.clear_exception.call() >> handler
+                else:
+                    handler_context.markVariableNotInitialized(h.name)
+                    variableStates.variableUninitialized(h.name)
+                    # after leaving handler, the exception instance is no longer available in this local variable
 
                 cond_context = ExpressionConversionContext(self, variableStates)
                 cond = cond_context.matchExceptionObject(exc_type)
