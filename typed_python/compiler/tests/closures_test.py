@@ -326,3 +326,48 @@ class TestCompilingClosures(unittest.TestCase):
         resCompiled = Entrypoint(callEachItemManyTimes)(aList, 10)
 
         self.assertEqual(resUncompiled, resCompiled)
+
+    def test_closure_distinguishes_assigned_variables(self):
+        # f relies on 'x', but since 'x' is only assigned exactly once, we
+        # can assume the value doesn't change type and bind its value
+        # directly in the closure.
+        x = 10
+        def f():
+            return x
+
+        # g relies on 'y' but because the value is assigned more
+        # than once in the function, we bind it with an untyped cell.
+        # if we pass it into an entrypoint.
+        y = 10
+        def g():
+            return y
+        y = 20
+
+        assert False, 'test something for real'
+
+    def test_closure_reads_variables_ahead(self):
+        @Function
+        def f():
+            return g()
+
+        # at this point, 'f's type is not yet set, because we don't know
+        # what 'g' is going to be. We can see that it will be assigned exactly once,
+        # but we don't know the value until it gets assigned.
+        # as a result, 'f' will have 'UnresolvedFunction'. An UnresolvedFunction
+        # never makes its way into any typedpython datastructures - we always force
+        # it to resolve when it gets used (and that resolution will bind to the cell
+        # as an untyped value if its not bound already)
+
+        def g():
+            return 10
+
+        # because we don't use 'f' before 'g' is bound, 'f' is able
+        # to resolve its type
+        self.assertEqual(f(), 10)
+
+
+# things in play:
+# 1. have we marked it with a Function?
+# 2. can we tell which of its closure values will be stable through time?
+# 3. how can its type be known at creation if not all closure values are set yet?
+#    it's a PyFunctionInstance. _we can change its type_!!
