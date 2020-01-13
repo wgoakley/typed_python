@@ -251,6 +251,11 @@ extern "C" {
         return PyErr_ExceptionMatches(exc);
     }
 
+    bool np_match_given_exception(PythonObjectOfType::layout_type* given, PyObject* exc) {
+        PyEnsureGilAcquired getTheGil;
+        return PyErr_GivenExceptionMatches(given->pyObj, exc);
+    }
+
     PythonObjectOfType::layout_type* np_fetch_exception() {
         PyObject* type;
         PyObject* value;
@@ -263,6 +268,25 @@ extern "C" {
         PythonObjectOfType::layout_type* ret = PythonObjectOfType::createLayout(value);
         decref(type);
         decref(traceback);
+        return ret;
+    }
+
+    PythonObjectOfType::layout_type* np_get_exception() {
+        PyObject* type = 0;
+        PyObject* value = 0;
+        PyObject* traceback = 0;
+
+        PyEnsureGilAcquired getTheGil;
+
+        PyErr_GetExcInfo(&type, &value, &traceback);
+
+        PythonObjectOfType::layout_type* ret = 0;
+        if (value)
+            ret = PythonObjectOfType::createLayout(value);
+        if (type)
+            decref(type);
+        if (traceback)
+            decref(traceback);
         return ret;
     }
 

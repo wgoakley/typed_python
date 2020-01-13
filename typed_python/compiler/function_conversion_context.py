@@ -21,7 +21,6 @@ from typed_python.compiler.python_ast_analysis import (
 )
 
 import typed_python.compiler
-import typed_python.compiler.type_wrappers.runtime_functions as runtime_functions
 import typed_python.compiler.native_ast as native_ast
 from typed_python.compiler.expression_conversion_context import ExpressionConversionContext
 from typed_python.compiler.function_stack_state import FunctionStackState
@@ -741,46 +740,36 @@ class FunctionConversionContext(object):
                     )
 
         if ast.matches.Try:
-            # all we're given is a string naming the exception, but we want the actual exception class
-            id_to_exception = {
-                "Exception": Exception,
-                "ArithmeticError": ArithmeticError,
-                "ZeroDivisionError": ZeroDivisionError,
-                "OverflowError": OverflowError,
-                "AttributeError": AttributeError,
-                "ValueError": ValueError,
-                "TypeError": TypeError,
-                "IndexError": IndexError
-            }
-
-            subcontext = ExpressionConversionContext(self, variableStates)
+            body_context = ExpressionConversionContext(self, variableStates)
             body, body_returns = self.convert_statement_list_ast(ast.body, variableStates)
-            subcontext.pushEffect(body)
+            body_context.pushEffect(body)
 
             handlers_context = ExpressionConversionContext(self, variableStates)
+            exceptionInBody = native_ast.Expression.StackSlot(name="exceptionInBody", type=native_ast.Bool)
+            exceptionUnhandled = native_ast.Expression.StackSlot(name="exceptionUnhandled", type=native_ast.Bool)
+
             working_context = ExpressionConversionContext(self, variableStates)
-            working = native_ast.nullExpr  # actually want the default case to be a Raise here
-            working_returns = True  # change to False when the default case is a Raise
+            working = exceptionUnhandled.store(native_ast.trueExpr) >> native_ast.nullExpr
+            working_returns = True
 
             for h in reversed(ast.handlers):
-                handler_context = ExpressionConversionContext(self, variableStates)
-                if h.type is None:
-                    exc_type = Exception
-                else:
-                    exc_type = id_to_exception[h.type.id]
-
-                if h.name is not None:
-                    self.assignToLocalVariable(h.name, handler_context.fetchExceptionObject(exc_type), variableStates)
-                handler, handler_returns = self.convert_statement_list_ast(h.body, variableStates)
-                if h.name is None:
-                    handler = runtime_functions.clear_exception.call() >> handler
-                else:
-                    handler_context.markVariableNotInitialized(h.name)
-                    variableStates.variableUninitialized(h.name)
-                    # after leaving handler, the exception instance is no longer available in this local variable
-
                 cond_context = ExpressionConversionContext(self, variableStates)
+                if h.type is None:
+                    exc_type = BaseException
+                else:
+                    exc_type = cond_context.convert_expression_ast(h.type).expr_type.typeRepresentation.Value
                 cond = cond_context.matchExceptionObject(exc_type)
+
+                handler_context = ExpressionConversionContext(self, variableStates)
+                if h.name is None:
+                    h_name = ".x"
+                else:
+                    h_name = h.name
+                self.assignToLocalVariable(h_name, handler_context.fetchExceptionObject(exc_type), variableStates)
+                handler, handler_returns = self.convert_statement_list_ast(h.body, variableStates)
+                handler_context.markVariableNotInitialized(h_name)
+                variableStates.variableUninitialized(h_name)
+                # after leaving handler, the exception instance is no longer available in this local variable
 
                 variableStatesMatch = variableStates.clone()
                 variableStatesOtherwise = variableStates.clone()
@@ -803,22 +792,49 @@ class FunctionConversionContext(object):
                 final, final_returns = self.convert_statement_list_ast(ast.finalbody, variableStates)
                 final_context.pushEffect(final)
             else:
-                final = None
-                final_returns = True
+                final, final_returns = None, True
 
-            if len(ast.handlers) > 0:
-                complete = native_ast.Expression.TryCatch(
-                    expr=subcontext.finalize(None, exceptionsTakeFrom=ast),
-                    varname=".ignored",
-                    handler=handlers_context.finalize(None, exceptionsTakeFrom=ast)
-                )
+            orelse_context = ExpressionConversionContext(self, variableStates)
+            if len(ast.orelse) > 0:
+                orelse, orelse_returns = self.convert_statement_list_ast(ast.orelse, variableStates)
+                orelse_context.pushEffect(orelse)
             else:
-                complete = subcontext.finalize(None, exceptionsTakeFrom=ast)
+                orelse, orelse_returns = None, True
+
+            complete = native_ast.Expression.TryCatch(
+                expr=exceptionInBody.store(native_ast.falseExpr)
+                >> exceptionUnhandled.store(native_ast.falseExpr)
+                >> body_context.finalize(None, exceptionsTakeFrom=ast)
+                >> native_ast.nullExpr,
+                handler=native_ast.Expression.TryCatch(
+                    expr=exceptionInBody.store(native_ast.trueExpr)
+                    >> handlers_context.finalize(None, exceptionsTakeFrom=ast) >> native_ast.nullExpr,
+                    handler=exceptionUnhandled.store(native_ast.trueExpr) >> native_ast.nullExpr
+                ) >> native_ast.nullExpr
+            )
+
+            if orelse:
+                complete = complete >> native_ast.Expression.Branch(
+                    cond=exceptionInBody.load(),
+                    false=native_ast.Expression.TryCatch(
+                        expr=orelse_context.finalize(None, exceptionsTakeFrom=ast),
+                        handler=exceptionUnhandled.store(native_ast.trueExpr) >> native_ast.nullExpr
+                    ) >> native_ast.nullExpr
+                ) >> native_ast.nullExpr
 
             if final:
                 complete = complete >> final_context.finalize(None, exceptionsTakeFrom=ast)
 
-            return (complete, (body_returns or working_returns) and final_returns)
+            complete = complete >> native_ast.Expression.Branch(
+                cond=exceptionUnhandled.load(),
+                true=native_ast.Expression.Throw(
+                    expr=native_ast.Expression.Constant(
+                        val=native_ast.Constant.NullPointer(value_type=native_ast.UInt8.pointer())
+                    )
+                ) >> native_ast.nullExpr
+            )
+
+            return (complete, ((body_returns and orelse_returns) or working_returns) and final_returns)
 
         if ast.matches.For:
             if not ast.target.matches.Name:

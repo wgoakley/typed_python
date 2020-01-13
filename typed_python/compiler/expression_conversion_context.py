@@ -146,15 +146,43 @@ class ExpressionConversionContext(object):
             )
         )
 
+    def matchGivenExceptionObject(self, given, exc):
+        """Return expression that tests whether current exception is an instance of exception class exc
+        """
+        return self.push(
+            Bool,
+            lambda oExpr:
+            oExpr.expr.store(
+                runtime_functions.match_given_exception.call(
+                    given.nonref_expr.cast(native_ast.Void.pointer()),
+                    native_ast.const_uint64_expr(id(exc)).cast(native_ast.Void.pointer())
+                )
+            )
+        )
+
     def fetchExceptionObject(self, exc):
         """Get a TypedExpression that represents the currently raised exception, as an object typed as ObjectOfType(exc)
         Don't generate unless you know there is an exception.
+        The exception state is cleared.
         """
         return self.push(
             TypeFor(exc),
             lambda oExpr:
             oExpr.expr.store(
                 runtime_functions.fetch_exception.call().cast(oExpr.expr_type.getNativeLayoutType())
+            )
+        )
+
+    def getExceptionObject(self, exc):
+        """Get a TypedExpression that represents the currently raised exception, as an object typed as ObjectOfType(exc)
+        Don't generate unless you know there is an exception.
+        The exception state is not cleared.
+        """
+        return self.push(
+            TypeFor(exc),
+            lambda oExpr:
+            oExpr.expr.store(
+                runtime_functions.get_exception.call().cast(oExpr.expr_type.getNativeLayoutType())
             )
         )
 

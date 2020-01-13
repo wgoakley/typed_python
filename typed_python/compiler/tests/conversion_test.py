@@ -759,9 +759,9 @@ class TestCompilationStructures(unittest.TestCase):
         def testContinue(x):
             res = 0
             for i in x:
-                res += i
                 if i > len(x) / 2:
                     continue
+                res += i
 
             return res
 

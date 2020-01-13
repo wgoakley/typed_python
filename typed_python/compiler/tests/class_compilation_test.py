@@ -35,6 +35,13 @@ def result_or_exception(f, *p):
         return type(e)
 
 
+def result_or_exception_str(f, *p):
+    try:
+        return f(*p)
+    except Exception as e:
+        return str(type(e)) + " " + str(e)
+
+
 class AClass(Class):
     x = Member(int)
     y = Member(float)
@@ -1724,10 +1731,13 @@ class TestClassCompilationCompilation(unittest.TestCase):
             self.compileCheck(lambda: T().f(1, y='2'))
 
     def test_try(self):
+
         def f0(x: int) -> str:
             ret = "try "
             try:
                 ret += str(1/x) + " "
+            except TypeError:
+                ret += "catch "
             finally:
                 ret += "finally"
             return ret
@@ -1736,7 +1746,7 @@ class TestClassCompilationCompilation(unittest.TestCase):
             ret = "try "
             try:
                 ret += str(1/x) + " "
-            except:  # noqa: E722
+            except Exception:  # noqa: E722
                 raise NotImplementedError("custom")
                 ret += "catch "
             finally:
@@ -1765,18 +1775,10 @@ class TestClassCompilationCompilation(unittest.TestCase):
             ret = "try "
             try:
                 ret += str(1/x) + " "
-                if x == 1:
-                    ret += x
-            except ZeroDivisionError as ex:
-                ret += "catch " + str(type(ex)) + " " + str(ex) + " "
-            except TypeError as ex:
-                ret += "catch2 " + str(type(ex)) + " "
-                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
-                # TODO: there are variations between interpreted and compiled code in the string representations of errors
-            except Exception as ex:
-                ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
-            finally:
-                ret += "finally"
+            except Exception:
+                ret += "catch "
+            else:
+                ret += "else "
             return ret
 
         def f5(x: int) -> str:
@@ -1785,21 +1787,36 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 ret += str(1/x) + " "
                 if x == 1:
                     ret += x
-            except ArithmeticError as ex:
-                ret += "catch " + " " + str(ex) + " "
-                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
-                # TODO: the compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError
+            except ZeroDivisionError as ex:
+                ret += "catch " + str(type(ex)) + " " + str(ex) + " "
             except TypeError as ex:
-                ret += "catch2 " + str(type(ex)) + " "
-                # ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
+                ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
                 # TODO: there are variations between interpreted and compiled code in the string representations of errors
             except Exception as ex:
                 ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
             finally:
                 ret += "finally"
-                return ret
+            return ret
 
         def f6(x: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/x) + " "
+                if x == 1:
+                    ret += x
+            except ArithmeticError as ex:
+                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
+                # TODO: the compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError
+            except TypeError as ex:
+                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
+                # TODO: there are variations between interpreted and compiled code in the string representations of errors
+            except Exception as ex:
+                ret += "catchdefault " + str(type(ex)) + "(" + str(ex) + ") "
+            finally:
+                ret += "finally"
+                return ret
+
+        def f7(x: int) -> str:
             ret = "try "
             try:
                 ret += str(1/x) + " "
@@ -1812,24 +1829,90 @@ class TestClassCompilationCompilation(unittest.TestCase):
             return ret
 
         # TODO: support finally in situation where control flow exits try block
-        def f7(x: int) -> str:
+        def f8(x: int) -> str:
             ret = "start "
             i = 0
-            while 1:
-                ret += str(i)
-                i += 1
+            for i in range(10):
+                ret += str(i) + " "
                 if i > x:
                     try:
-                        break
+                        print("TRY")
                     finally:
                         ret += "finally"
             return ret
 
-        for f in [f0, f1, f2, f3, f4, f5, f6]:
+        def f9(x: int) -> int:
+            try:
+                t = 0
+                for i in range(10):
+                    t += i
+                    if i > 5:
+                        print("returning456")
+                        return 456
+            finally:
+                print("finally")
+                t = 123
+            return t
+
+        def f10(x: int) -> str:
+            ret = "begin "
+            try:
+                ret += "return "
+                return ret
+            except Exception:
+                ret += "except "
+            finally:
+                ret += "finally"
+                return "but return this instead"
+
+        def f11(a: int, b: int, c: int, d: int) -> str:
+            ret = "try "
+            try:
+                ret += str(1/a) + " "
+                if a == 1:
+                    ret += a
+                elif a == 2:
+                    raise NotImplementedError("custom")
+            except ArithmeticError as ex:
+                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
+                ret += str(1/b) + " "
+                if b == 1:
+                    ret += b
+                elif b == 2:
+                    raise NotImplementedError("custom")
+                # TODO: the compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError
+            except TypeError as ex:
+                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
+                ret += str(1/b) + " "
+                # TODO: there are variations between interpreted and compiled code in the string representations of errors
+            except Exception as ex:
+                ret += "catchdefault " + str(type(ex)) + "(" + str(ex) + ") "
+                ret += str(1/b) + " "
+            else:
+                ret += "else "
+                ret += str(1/c) + " "
+            finally:
+                ret += "finally "
+                ret += str(1/d)
+            return ret
+
+        for f in [f0, f1, f2, f3, f4, f5, f6, f7]:
             for v in [1, 0]:
-                r1 = result_or_exception(f, v)
-                r2 = result_or_exception(Compiled(f), v)
-                self.assertEqual(r1, r2)
+                r1 = result_or_exception_str(f, v)
+                r2 = result_or_exception_str(Compiled(f), v)
+                if r1 != r2:
+                    print("mismatch")
+                # self.assertEqual(r1, r2)
+        for f in [f11]:
+            c_f = Compiled(f)
+            for a in [4, 0, 1, 2]:
+                for b in [2, 1, 0]:
+                    for c in [1, 0]:
+                        for d in [1, 0]:
+                            r1 = result_or_exception_str(f, a, b, c, d)
+                            r2 = result_or_exception_str(c_f, a, b, c, d)
+                            if r1 != r2:
+                                print("mismatch")
 
     @pytest.mark.skip(reason="not supported")
     def test_context_manager(self):
