@@ -1088,6 +1088,12 @@ class ExpressionConversionContext(object):
 
         return self.pushExceptionObject(exceptionVal)
 
+    def pushExceptionClear(self):
+        nativeExpr = (
+            runtime_functions.clear_exception.call()
+        )
+        self.pushEffect(nativeExpr)
+
     def pushExceptionObject(self, exceptionObject):
         nativeExpr = (
             runtime_functions.initialize_exception.call(

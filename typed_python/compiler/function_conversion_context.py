@@ -804,23 +804,22 @@ class FunctionConversionContext(object):
             complete = native_ast.Expression.TryCatch(
                 expr=exceptionInBody.store(native_ast.falseExpr)
                 >> exceptionUnhandled.store(native_ast.falseExpr)
-                >> body_context.finalize(None, exceptionsTakeFrom=ast)
-                >> native_ast.nullExpr,
+                >> body_context.finalize(None, exceptionsTakeFrom=ast),
                 handler=native_ast.Expression.TryCatch(
                     expr=exceptionInBody.store(native_ast.trueExpr)
-                    >> handlers_context.finalize(None, exceptionsTakeFrom=ast) >> native_ast.nullExpr,
+                    >> handlers_context.finalize(None, exceptionsTakeFrom=ast),
                     handler=exceptionUnhandled.store(native_ast.trueExpr) >> native_ast.nullExpr
-                ) >> native_ast.nullExpr
+                )
             )
 
             if orelse:
                 complete = complete >> native_ast.Expression.Branch(
                     cond=exceptionInBody.load(),
                     false=native_ast.Expression.TryCatch(
-                        expr=orelse_context.finalize(None, exceptionsTakeFrom=ast),
+                        expr=orelse_context.finalize(None, exceptionsTakeFrom=ast) >> native_ast.nullExpr,
                         handler=exceptionUnhandled.store(native_ast.trueExpr) >> native_ast.nullExpr
-                    ) >> native_ast.nullExpr
-                ) >> native_ast.nullExpr
+                    )
+                )
 
             if final:
                 complete = complete >> final_context.finalize(None, exceptionsTakeFrom=ast)
@@ -831,7 +830,7 @@ class FunctionConversionContext(object):
                     expr=native_ast.Expression.Constant(
                         val=native_ast.Constant.NullPointer(value_type=native_ast.UInt8.pointer())
                     )
-                ) >> native_ast.nullExpr
+                )
             )
 
             return (complete, ((body_returns and orelse_returns) or working_returns) and final_returns)
@@ -938,6 +937,7 @@ class FunctionConversionContext(object):
 
         if ast.matches.Raise:
             expr_context = ExpressionConversionContext(self, variableStates)
+            expr_context.pushExceptionClear()
             toThrow = expr_context.convert_expression_ast(ast.exc)
 
             expr_context.pushExceptionObject(toThrow)

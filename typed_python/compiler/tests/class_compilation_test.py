@@ -1788,12 +1788,11 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 if x == 1:
                     ret += x
             except ZeroDivisionError as ex:
-                ret += "catch " + str(type(ex)) + " " + str(ex) + " "
+                ret += "catch1 " + str(type(ex))
             except TypeError as ex:
-                ret += "catch2 " + str(type(ex)) + " " + str(ex) + " "
-                # TODO: there are variations between interpreted and compiled code in the string representations of errors
-            except Exception as ex:
-                ret += "catchdefault " + str(type(ex)) + " " + str(ex) + " "
+                ret += "catch2 " + str(type(ex))
+            except Exception:
+                ret += "catchdefault "
             finally:
                 ret += "finally"
             return ret
@@ -1804,14 +1803,14 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 ret += str(1/x) + " "
                 if x == 1:
                     ret += x
-            except ArithmeticError as ex:
-                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
-                # TODO: the compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError
+            except ArithmeticError:
+                ret += "catch1 "
+                # TODO: The compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError.
+                # TODO: Also, there are variations between interpreted and compiled code in the string representations of errors.
             except TypeError as ex:
-                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
-                # TODO: there are variations between interpreted and compiled code in the string representations of errors
-            except Exception as ex:
-                ret += "catchdefault " + str(type(ex)) + "(" + str(ex) + ") "
+                ret += "catch2 " + str(type(ex))
+            except Exception:
+                ret += "catchdefault "
             finally:
                 ret += "finally"
                 return ret
@@ -1872,47 +1871,46 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 if a == 1:
                     ret += a
                 elif a == 2:
-                    raise NotImplementedError("custom")
-            except ArithmeticError as ex:
-                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
+                    raise NotImplementedError("in body")
+            except ArithmeticError:
+                ret += "catch1 "
                 ret += str(1/b) + " "
                 if b == 1:
                     ret += b
                 elif b == 2:
-                    raise NotImplementedError("custom")
-                # TODO: the compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError
-            except TypeError as ex:
-                ret += "catch2 " + str(type(ex)) + "(" + str(ex) + ") "
+                    raise NotImplementedError("in handler")
+                # TODO: The compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError.
+                # TODO: Also, there are variations between interpreted and compiled code in the string representations of errors.
+            except TypeError:
+                ret += "catch2 "
                 ret += str(1/b) + " "
-                # TODO: there are variations between interpreted and compiled code in the string representations of errors
-            except Exception as ex:
-                ret += "catchdefault " + str(type(ex)) + "(" + str(ex) + ") "
+            except Exception:
+                ret += "catchdefault "
                 ret += str(1/b) + " "
             else:
                 ret += "else "
-                ret += str(1/c) + " "
+                if c == 0:
+                    raise MemoryError("out of memory")
             finally:
                 ret += "finally "
-                ret += str(1/d)
+                if d == 0:
+                    raise SyntaxError("syntax err")
             return ret
 
         for f in [f0, f1, f2, f3, f4, f5, f6, f7]:
             for v in [1, 0]:
                 r1 = result_or_exception_str(f, v)
                 r2 = result_or_exception_str(Compiled(f), v)
-                if r1 != r2:
-                    print("mismatch")
-                # self.assertEqual(r1, r2)
+                self.assertEqual(r1, r2)
         for f in [f11]:
             c_f = Compiled(f)
-            for a in [4, 0, 1, 2]:
-                for b in [2, 1, 0]:
+            for a in [4, 2, 1, 0]:
+                for b in [4, 2, 1, 0]:
                     for c in [1, 0]:
                         for d in [1, 0]:
-                            r1 = result_or_exception_str(f, a, b, c, d)
-                            r2 = result_or_exception_str(c_f, a, b, c, d)
-                            if r1 != r2:
-                                print("mismatch")
+                            r1 = result_or_exception(f, a, b, c, d)
+                            r2 = result_or_exception(c_f, a, b, c, d)
+                            self.assertEqual(r1, r2)
 
     @pytest.mark.skip(reason="not supported")
     def test_context_manager(self):
