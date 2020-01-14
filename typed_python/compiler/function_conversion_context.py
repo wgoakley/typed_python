@@ -630,7 +630,8 @@ class FunctionConversionContext(object):
             if e is None:
                 return subcontext.finalize(None, exceptionsTakeFrom=ast), False
 
-            subcontext.pushReturnValue(e)
+            # Testing
+            subcontext.pushReturnValue(e, blockName="jtest")
 
             return subcontext.finalize(None, exceptionsTakeFrom=ast), False
 
@@ -742,6 +743,11 @@ class FunctionConversionContext(object):
         if ast.matches.Try:
             body_context = ExpressionConversionContext(self, variableStates)
             body, body_returns = self.convert_statement_list_ast(ast.body, variableStates)
+
+            # Testing
+            body = body.withReturnTargetName("jtest")
+            body_returns = True
+
             body_context.pushEffect(body)
 
             handlers_context = ExpressionConversionContext(self, variableStates)

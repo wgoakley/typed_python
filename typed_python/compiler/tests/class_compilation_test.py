@@ -1836,6 +1836,7 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 if i > x:
                     try:
                         print("TRY")
+                        break
                     finally:
                         ret += "finally"
             return ret
@@ -1862,7 +1863,21 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 ret += "except "
             finally:
                 ret += "finally"
-                return "but return this instead"
+                return "but return this instead" + ret
+
+        def f10a():
+            try:
+                return
+            finally:
+                pass
+
+        def f10b(x: int):
+            ret = "begin "
+            try:
+                ret += "return "
+                return
+            finally:
+                ret += "finally"
 
         def f11(a: int, b: int, c: int, d: int) -> str:
             ret = "try "
@@ -1897,6 +1912,7 @@ class TestClassCompilationCompilation(unittest.TestCase):
                     raise SyntaxError("syntax err")
             return ret
 
+        c_f = Compiled(f10a)
         for f in [f0, f1, f2, f3, f4, f5, f6, f7]:
             for v in [1, 0]:
                 r1 = result_or_exception_str(f, v)

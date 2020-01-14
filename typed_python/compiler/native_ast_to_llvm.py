@@ -810,7 +810,19 @@ class FunctionConverter:
 
         if expr.matches.Return:
             if expr.blockName is not None:
-                assert expr.arg is None, expr.arg
+                # assert expr.arg is None, expr.arg
+                if expr.arg is not None:
+                    # write the value into the return slot
+                    arg = self.convert(expr.arg)
+
+                    if arg is None:
+                        # the expression threw an exception so we can't actually
+                        # return
+                        return
+
+                    if not self.output_type.matches.Void:
+                        assert self.return_slot is not None
+                        self.builder.store(arg.llvm_value, self.return_slot)
 
                 controlFlowSwitch = self.teardown_handler.controlFlowSwitchForReturn(name=expr.blockName)
 
