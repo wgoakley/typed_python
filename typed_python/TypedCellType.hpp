@@ -39,6 +39,10 @@ public:
 
         m_is_simple = false;
 
+        m_size = sizeof(layout*);
+
+        m_is_default_constructible = true;
+
         endOfConstructorInitialization(); // finish initializing the type object.
     }
 
@@ -48,7 +52,6 @@ public:
 
     template<class visitor_type>
     void _visitContainedTypes(const visitor_type& visitor) {
-        visitor(mHeldType);
     }
 
     template<class visitor_type>
@@ -57,11 +60,17 @@ public:
     }
 
     bool _updateAfterForwardTypesChanged() {
-        m_size = sizeof(layout*);
+        std::string newName = std::string("TypedCell(") + mHeldType->name() + ")";
 
-        m_is_default_constructible = mHeldType->is_default_constructible();
+        bool nameChanged = newName != m_name;
 
-        return false;
+        m_name = newName;
+
+        return nameChanged;
+    }
+
+    void _updateTypeMemosAfterForwardResolution() {
+        TypedCellType::Make(mHeldType, this);
     }
 
     layout_ptr& getLayoutPtr(instance_ptr self) {

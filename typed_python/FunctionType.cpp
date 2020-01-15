@@ -67,18 +67,39 @@ PyObject* Function::Overload::buildFunctionObj(instance_ptr self) const {
 
             for (long k = 0; k < closureVarCount; k++) {
                 try {
-                    PyObjectStealer asPyObj(
-                        PyInstance::extractPythonObject(
-                            self + mClosureType->getOffsets()[k],
-                            mClosureType->getTypes()[k]
-                        )
-                    );
+                    if (mClosureType->getTypes()[k]->getTypeCategory() == Type::TypeCategory::catPyCell) {
+                        // we're actually storing the PyCellObject in our closure directly
+                        PyTuple_SetItem(
+                            (PyObject*)closureTup,
+                            k,
+                            ((PyCellType*)mClosureType->getTypes()[k])->getPyObj(
+                                self + mClosureType->getOffsets()[k]
+                            )
+                        );
+                    } else
+                    if (mClosureType->getTypes()[k]->getTypeCategory() == Type::TypeCategory::catTypedCell) {
+                        // we're actually storing this as a typed cell in our closure directly.
+                        // we don't know how to mirror this down into interpreter code.
+                        // we should be ensuring that we never call this method and instead dispatch
+                        // to compiled code at all times. Alternatively, we could rewrite the opcodes
+                        // to handle typed closures.
 
-                    if (!asPyObj) {
-                        throw PythonExceptionSet();
+                        // for now, we just throw an exception
+                        throw std::runtime_error("Invalid closure: typed closure encountered");
+                    } else {
+                        PyObjectStealer asPyObj(
+                            PyInstance::extractPythonObject(
+                                self + mClosureType->getOffsets()[k],
+                                mClosureType->getTypes()[k]
+                            )
+                        );
+
+                        if (!asPyObj) {
+                            throw PythonExceptionSet();
+                        }
+
+                        PyTuple_SetItem((PyObject*)closureTup, k, PyCell_New(asPyObj));
                     }
-
-                    PyTuple_SetItem((PyObject*)closureTup, k, PyCell_New(asPyObj));
                 } catch(...) {
                     // make sure the tuple is populated before ripping it down
                     for (long j = k; j < closureVarCount; j++) {

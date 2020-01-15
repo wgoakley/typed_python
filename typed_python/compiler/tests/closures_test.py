@@ -14,7 +14,7 @@
 
 import unittest
 import time
-from typed_python import Function, NamedTuple, bytecount, ListOf, DisableCompiledCode, TypedCell
+from typed_python import Function, NamedTuple, bytecount, ListOf, DisableCompiledCode, TypedCell, Forward, PyCell
 from typed_python.compiler.runtime import RuntimeEventVisitor, Entrypoint
 
 
@@ -327,45 +327,21 @@ class TestCompilingClosures(unittest.TestCase):
 
         self.assertEqual(resUncompiled, resCompiled)
 
-    def test_closure_distinguishes_assigned_variables(self):
-        # f relies on 'x', but since 'x' is only assigned exactly once, we
-        # can assume the value doesn't change type and bind its value
-        # directly in the closure.
-        x = 10
-
-        def f():
-            return x
-
-        # g relies on 'y' but because the value is assigned more
-        # than once in the function, we bind it with an untyped cell.
-        # if we pass it into an entrypoint.
-        y = 10
-
-        def g():
-            return y
-        y = 20
-
-        assert False, 'test something for real'
-
-    def test_closure_reads_variables_ahead(self):
+    def test_mutually_recursive_closures(self):
         @Function
-        def f():
-            return g()
+        def f(x):
+            if x == 0:
+                return 0
+            return g(x-1)
 
-        # at this point, 'f's type is not yet set, because we don't know
-        # what 'g' is going to be. We can see that it will be assigned exactly once,
-        # but we don't know the value until it gets assigned.
-        # as a result, 'f' will have 'UnresolvedFunction'. An UnresolvedFunction
-        # never makes its way into any typedpython datastructures - we always force
-        # it to resolve when it gets used (and that resolution will bind to the cell
-        # as an untyped value if its not bound already)
+        @Function
+        def g(x):
+            return f(x-1)
 
-        def g():
-            return 10
+        self.assertEqual(f.overloads[0].closureType.ElementNames[0], 'g')
+        self.assertEqual(f.overloads[0].closureType.ElementTypes[0], PyCell)
 
-        # because we don't use 'f' before 'g' is bound, 'f' is able
-        # to resolve its type
-        self.assertEqual(f(), 10)
+        self.assertEqual(f(10), 0)
 
     def test_typed_cell(self):
         T = TypedCell(int)
@@ -393,9 +369,187 @@ class TestCompilingClosures(unittest.TestCase):
         with self.assertRaises(Exception):
             t.get()
 
+    def test_typed_cell_in_tuple(self):
+        TC = TypedCell(int)
 
-# things in play:
-# 1. have we marked it with a Function?
-# 2. can we tell which of its closure values will be stable through time?
-# 3. how can its type be known at creation if not all closure values are set yet?
-#    it's a PyFunctionInstance. _we can change its type_!!
+        aTup = NamedTuple(x=TC)(x=TC())
+        aTup.x.set(1)
+
+    def test_typed_cell_with_forwards(self):
+        Tup = Forward("Tup")
+        Tup = Tup.define(NamedTuple(cell=TypedCell(Tup), x=int))
+        TC = TypedCell(Tup)
+
+        self.assertEqual(Tup.ElementTypes[0], TC)
+
+        t1 = Tup(cell=TC(), x=1)
+        t2 = Tup(cell=TC(), x=2)
+        t1.cell.set(t2)
+        t2.cell.set(t1)
+
+        self.assertEqual(t1.cell.get().x, 2)
+        self.assertEqual(t2.cell.get().x, 1)
+        self.assertEqual(t1.cell.get().cell.get().x, 1)
+        self.assertEqual(t2.cell.get().cell.get().x, 2)
+
+    def test_function_overload_with_closures(self):
+        @Function
+        def f():
+            return x
+
+        @f.overload
+        def f(anArg):
+            return y
+
+        @Function
+        def f2(anArg, anArg2):
+            return z
+
+        @f2.overload
+        def f2(anArg, anArg2, anArg3):
+            return w
+
+        x = 10
+        y = 20
+        z = 30
+        w = 40
+
+        self.assertEqual(f(), 10)
+        self.assertEqual(f(1), 20)
+
+        self.assertEqual(f2(1, 2), 30)
+        self.assertEqual(f2(1, 2, 3), 40)
+
+        combo = f.overload(f2)
+
+        self.assertEqual(combo(), 10)
+        self.assertEqual(combo(1), 20)
+        self.assertEqual(combo(1, 2), 30)
+        self.assertEqual(combo(1, 2, 3), 40)
+
+    def test_replace_function_closure(self):
+        @Function
+        def f():
+            return x
+
+        @f.overload
+        def f(anArg):
+            return y
+
+        x = 10
+        y = 20
+
+        fRep = f.replaceClosure(1, NamedTuple(y=int)(y=2))
+
+        self.assertEqual(f(), 10)
+        self.assertEqual(f(1), 20)
+
+        self.assertEqual(fRep(), 10)
+        self.assertEqual(fRep(1), 2)
+
+        fRep2 = fRep.replaceClosure(0, NamedTuple(x=str)(x="hihi"))
+
+        self.assertEqual(fRep2(), "hihi")
+        self.assertEqual(fRep2(1), 2)
+
+        # verify we can put it back to pointing at our original pycells
+        fRep3 = (
+            fRep2
+            .replaceClosure(0, f.closureForOverload(0))
+            .replaceClosure(1, f.closureForOverload(1))
+        )
+
+        self.assertEqual(fRep3(), 10)
+        self.assertEqual(fRep3(1), 20)
+
+    def test_compile_typed_closure(self):
+        @Entrypoint
+        def f(count):
+            res = 0.0
+
+            for i in range(count):
+                res = res + x
+
+            return res
+
+        x = 0
+
+        xCell = TypedCell(float)()
+        xCell.set(1.0)
+
+        fWithTypedClosure = f.replaceClosure(0, NamedTuple(x=TypedCell(float))(x=xCell))
+
+        self.assertEqual(fWithTypedClosure(10), 10.0)
+
+        t0 = time.time()
+        fWithTypedClosure(1000000)
+        elapsed = time.time() - t0
+
+        print("Took ", elapsed, " to do 1mm typed cell lookups")
+
+        # I get about 0.0024, or 400mm lookups a second. If we were
+        # to allow it to assume the closure is populated, which we should be
+        # able to do in many cases, this would be more like 1bb lookups.
+        self.assertTrue(elapsed < 0.2)
+
+    def test_build_mutually_recursive_functions_from_untyped_closure(self):
+        @Entrypoint
+        def f(x):
+            if x > 0:
+                return g(x - 1) + 1.0
+            return 0.0
+
+        @Entrypoint
+        def g(x):
+            return f(x)
+
+        # explicitly build the typed closure
+        fType = Forward("fType")
+        gType = Forward("gType")
+
+        fType = fType.define(
+            type(f).replaceClosureType(
+                0,
+                NamedTuple(g=TypedCell(gType))
+            )
+        )
+
+        gType = gType.define(
+            type(g).replaceClosureType(
+                0,
+                NamedTuple(f=TypedCell(fType))
+            )
+        )
+
+        gCell = TypedCell(gType)()
+        fCell = TypedCell(fType)()
+
+        fCell.set(f.replaceClosure(0, NamedTuple(g=TypedCell(gType))(g=gCell)))
+        gCell.set(g.replaceClosure(0, NamedTuple(f=TypedCell(fType))(f=fCell)))
+
+        self.assertEqual(fCell.get()(100), 100.0)
+
+    def test_call_function_in_closure_perf(self):
+        @Entrypoint
+        def f(x):
+            return x + 1.0
+
+        @Entrypoint
+        def g(x, times):
+            res = 0.0
+            for i in range(times):
+                res += f(x)
+            return res
+
+        fCell = TypedCell(type(f))()
+        fCell.set(f)
+
+        g = g.replaceClosure(0, NamedTuple(f=type(fCell))(f=fCell))
+
+        g(1.0, 1000000)
+
+        t0 = time.time()
+        g(1.0, 1000000)
+        elapsed = time.time() - t0
+
+        print("took ", elapsed, " to do 1mm dispatches through a TypedCell")

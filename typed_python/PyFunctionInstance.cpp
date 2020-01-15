@@ -541,44 +541,72 @@ PyObject* PyFunctionInstance::overload(PyObject* funcObj, PyObject* args, PyObje
             throw std::runtime_error("Can't call 'overload' with kwargs");
         }
 
-        Function* resType = (Function*)((PyInstance*)(funcObj))->type();
+        if (PyTuple_Size(args) != 1) {
+            throw std::runtime_error("'overload' expects one argument");
+        }
 
-        if (!resType || resType->getTypeCategory() != Type::TypeCategory::catFunction) {
+        Function* ownType = (Function*)((PyInstance*)(funcObj))->type();
+        instance_ptr ownClosure = ((PyInstance*)(funcObj))->dataPtr();
+
+        if (!ownType || ownType->getTypeCategory() != Type::TypeCategory::catFunction) {
             throw std::runtime_error("Expected 'cls' to be a Function.");
         }
 
-        iterate(args, [&](PyObject* arg) {
-            Type* argT = PyInstance::extractTypeFrom(arg->ob_type);
+        PyObject* arg = PyTuple_GetItem(args, 0);
 
-            if (!argT) {
-                argT = PyInstance::unwrapTypeArgToTypePtr(arg);
+        Type* argT = PyInstance::extractTypeFrom(arg->ob_type);
+        Instance otherFuncAsInstance;
 
-                if (!argT && PyFunction_Check(arg)) {
-                    // unwrapTypeArgToTypePtr sets an exception if it can't convert.
-                    // we want to clear it so we can try the unwrapping directly.
-                    PyErr_Clear();
+        Function* otherType;
+        instance_ptr otherClosure;
 
-                    PyObjectStealer name(PyObject_GetAttrString(arg, "__name__"));
-                    if (!name) {
-                        throw PythonExceptionSet();
-                    }
+        if (!argT) {
+            argT = PyInstance::unwrapTypeArgToTypePtr(arg);
 
-                    argT = convertPythonObjectToFunction(name, arg, false);
-                }
+            if (!argT && PyFunction_Check(arg)) {
+                // unwrapTypeArgToTypePtr sets an exception if it can't convert.
+                // we want to clear it so we can try the unwrapping directly.
+                PyErr_Clear();
 
-                if (!argT) {
+                PyObjectStealer name(PyObject_GetAttrString(arg, "__name__"));
+                if (!name) {
                     throw PythonExceptionSet();
                 }
+
+                argT = convertPythonObjectToFunctionType(name, arg, false);
             }
 
+            if (!argT) {
+                throw PythonExceptionSet();
+            }
+
+            otherFuncAsInstance = Instance::createAndInitialize(
+                argT,
+                [&](instance_ptr ptr) {
+                    PyInstance::copyConstructFromPythonInstance(argT, ptr, arg, true);
+                }
+            );
+
+            otherType = (Function*)argT;
+            otherClosure = otherFuncAsInstance.data();
+        } else {
             if (argT->getTypeCategory() != Type::TypeCategory::catFunction) {
                 throw std::runtime_error("'overload' requires arguments to be Function types");
             }
+            otherType = (Function*)argT;
+            otherClosure = ((PyInstance*)arg)->dataPtr();
+        }
 
-            resType = Function::merge(resType, (Function*)argT);
+        Function* mergedType = Function::merge(ownType, otherType);
+
+        // closures are packed in
+        return PyInstance::initialize(mergedType, [&](instance_ptr p) {
+            ownType->getClosureType()->copy_constructor(p, ownClosure);
+            otherType->getClosureType()->copy_constructor(
+                p + ownType->getClosureType()->bytecount(),
+                otherClosure
+            );
         });
-
-        return PyInstance::initialize(resType, [&](instance_ptr p) {});
     });
 }
 
@@ -623,16 +651,19 @@ PyObject* PyFunctionInstance::resultTypeFor(PyObject* funcObj, PyObject* args, P
 
 /* static */
 PyMethodDef* PyFunctionInstance::typeMethodsConcrete(Type* t) {
-    return new PyMethodDef [5] {
+    return new PyMethodDef[8] {
         {"overload", (PyCFunction)PyFunctionInstance::overload, METH_VARARGS | METH_KEYWORDS, NULL},
         {"withEntrypoint", (PyCFunction)PyFunctionInstance::withEntrypoint, METH_VARARGS | METH_KEYWORDS, NULL},
         {"resultTypeFor", (PyCFunction)PyFunctionInstance::resultTypeFor, METH_VARARGS | METH_KEYWORDS, NULL},
         {"extractPyFun", (PyCFunction)PyFunctionInstance::extractPyFun, METH_VARARGS | METH_KEYWORDS, NULL},
+        {"closureForOverload", (PyCFunction)PyFunctionInstance::closureForOverload, METH_VARARGS | METH_KEYWORDS, NULL},
+        {"replaceClosure", (PyCFunction)PyFunctionInstance::replaceClosure, METH_VARARGS | METH_KEYWORDS, NULL},
+        {"replaceClosureType", (PyCFunction)PyFunctionInstance::replaceClosureType, METH_VARARGS | METH_KEYWORDS | METH_CLASS, NULL},
         {NULL, NULL}
     };
 }
 
-Function* PyFunctionInstance::convertPythonObjectToFunction(PyObject* name, PyObject *funcObj, bool assumeClosuresGlobal) {
+Function* PyFunctionInstance::convertPythonObjectToFunctionType(PyObject* name, PyObject *funcObj, bool assumeClosuresGlobal) {
     static PyObject* internalsModule = PyImport_ImportModule("typed_python.internals");
 
     if (!internalsModule) {
@@ -708,6 +739,8 @@ void PyFunctionInstance::copyConstructFromPythonInstanceConcrete(Function* type,
     }
 
     closureType->constructor(tgt, [&](instance_ptr tgtCell, int index) {
+        Type* closureTypeInst = closureType->getTypes()[index];
+
         PyObject* cell = PyTuple_GetItem(pyClosure, index);
         if (!cell) {
             throw PythonExceptionSet();
@@ -717,15 +750,143 @@ void PyFunctionInstance::copyConstructFromPythonInstanceConcrete(Function* type,
             throw std::runtime_error("Expected function closure to be made up of cells.");
         }
 
-        if (!PyCell_GET(cell)) {
-            throw std::runtime_error("Cell for " + closureType->getNames()[index] + " was empty.");
-        }
+        if (closureTypeInst->getTypeCategory() == Type::TypeCategory::catPyCell) {
+            // our representation in the closure is itself a PyCell, so we just reference
+            // the actual cell object.
+            static PyCellType* pct = PyCellType::Make();
+            pct->initializeFromPyObject(tgtCell, cell);
+        } else {
+            if (!PyCell_GET(cell)) {
+                throw std::runtime_error("Cell for " + closureType->getNames()[index] + " was empty.");
+            }
 
-        PyInstance::copyConstructFromPythonInstance(
-            closureType->getTypes()[index],
-            tgtCell,
-            PyCell_GET(cell),
-            isExplicit
+            PyInstance::copyConstructFromPythonInstance(
+                closureType->getTypes()[index],
+                tgtCell,
+                PyCell_GET(cell),
+                isExplicit
+            );
+        }
+    });
+}
+
+/* static */
+PyObject* PyFunctionInstance::closureForOverload(PyObject* funcObj, PyObject* args, PyObject* kwargs) {
+    static const char *kwlist[] = {"overloadIx", NULL};
+
+    long overloadIx;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "l", (char**)kwlist, &overloadIx)) {
+        return nullptr;
+    }
+
+    Function* fType = (Function*)((PyInstance*)(funcObj))->type();
+
+    if (overloadIx < 0 || overloadIx >= fType->getOverloads().size()) {
+        PyErr_SetString(PyExc_IndexError, "Overload index out of bounds");
+        return nullptr;
+    }
+
+    return translateExceptionToPyObject([&]() {
+        return PyInstance::extractPythonObject(
+            ((PyInstance*)funcObj)->dataPtr() + fType->getClosureType()->getOffsets()[overloadIx],
+            fType->getClosureType()->getTypes()[overloadIx]
         );
     });
+}
+
+/* static */
+PyObject* PyFunctionInstance::replaceClosure(PyObject* funcObj, PyObject* args, PyObject* kwargs) {
+    static const char *kwlist[] = {"overloadIx", "closure", NULL};
+
+    long overloadIx;
+    PyObject* closure;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "lO", (char**)kwlist, &overloadIx, &closure)) {
+        return nullptr;
+    }
+
+    Type* argT = PyInstance::extractTypeFrom(closure->ob_type);
+
+    if (!argT || argT->getTypeCategory() != Type::TypeCategory::catNamedTuple) {
+        PyErr_SetString(PyExc_TypeError, "Closure needs to be a named tuple");
+        return nullptr;
+    }
+
+    NamedTuple* newClosureT = (NamedTuple*)argT;
+    instance_ptr newClosureData = ((PyInstance*)closure)->dataPtr();
+
+    Function* fType = (Function*)((PyInstance*)(funcObj))->type();
+    instance_ptr fClosure = ((PyInstance*)(funcObj))->dataPtr();
+
+    if (overloadIx < 0 || overloadIx >= fType->getOverloads().size()) {
+        PyErr_SetString(PyExc_IndexError, "Overload index out of bounds");
+        return nullptr;
+    }
+
+    NamedTuple* existingClosureType = (NamedTuple*)fType->getClosureType()->getTypes()[overloadIx];
+
+    if (existingClosureType->getNames() != newClosureT->getNames()) {
+        PyErr_SetString(PyExc_TypeError, "Closure type names can't change");
+        return nullptr;
+    }
+
+    std::vector<Function::Overload> overloads = fType->getOverloads();
+
+    overloads[overloadIx] = overloads[overloadIx].replaceClosure(newClosureT);
+
+    Function* newFType = Function::Make(fType->name(), overloads, fType->isEntrypoint());
+
+    // construct a new function. Each overload's closure is contained within a single
+    // tuple element in newFType->getClosureType(). We'll copy each element from the
+    // source function (a tuple with per-overload elements in fClosure), but for
+    // 'overloadIx' we'll use the new closure.
+    return PyInstance::initialize(newFType, [&](instance_ptr p) {
+        newFType->getClosureType()->constructor(p, [&](instance_ptr overloadClosure, int index) {
+            if (index != overloadIx) {
+                fType->getClosureType()->getTypes()[index]->copy_constructor(
+                    overloadClosure,
+                    fClosure + fType->getClosureType()->getOffsets()[index]
+                );
+            } else {
+                newClosureT->copy_constructor(overloadClosure, newClosureData);
+            }
+        });
+    });
+}
+
+/* static */
+PyObject* PyFunctionInstance::replaceClosureType(PyObject* funcObj, PyObject* args, PyObject* kwargs) {
+    static const char *kwlist[] = {"overloadIx", "closureType", NULL};
+
+    long overloadIx;
+    PyObject* closureType;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "lO", (char**)kwlist, &overloadIx, &closureType)) {
+        return nullptr;
+    }
+
+    Type* funcT = PyInstance::tryUnwrapPyInstanceToType(funcObj);
+    Type* argT = PyInstance::tryUnwrapPyInstanceToType(closureType);
+
+    if (!funcT || funcT->getTypeCategory() != Type::TypeCategory::catFunction) {
+        PyErr_SetString(PyExc_TypeError, "self needs to be a Function type");
+        return nullptr;
+    }
+
+    if (!argT || argT->getTypeCategory() != Type::TypeCategory::catNamedTuple) {
+        PyErr_SetString(PyExc_TypeError, "closureType needs to be a named tuple");
+        return nullptr;
+    }
+
+    Function* funcType = (Function*)funcT;
+    NamedTuple* newClosureType = (NamedTuple*)argT;
+
+    std::vector<Function::Overload> overloads = funcType->getOverloads();
+
+    overloads[overloadIx] = overloads[overloadIx].replaceClosure(newClosureType);
+
+    Function* newFType = Function::Make(funcType->name(), overloads, funcType->isEntrypoint());
+
+    return PyInstance::typePtrToPyTypeRepresentation(newFType);
 }

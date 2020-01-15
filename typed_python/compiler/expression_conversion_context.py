@@ -28,6 +28,7 @@ from typed_python import NoneType, Alternative, OneOf, Int32, ListOf, String, Tu
 from typed_python._types import getTypePointer
 from typed_python.compiler.type_wrappers.named_tuple_masquerading_as_dict_wrapper import NamedTupleMasqueradingAsDict
 from typed_python.compiler.type_wrappers.typed_tuple_masquerading_as_tuple_wrapper import TypedTupleMasqueradingAsTuple
+from typed_python.compiler.type_wrappers.typed_cell_wrapper import TypedCellWrapper
 from typed_python import bytecount
 
 builtinValueIdToNameAndValue = {id(v): (k, v) for k, v in __builtins__.items()}
@@ -1154,7 +1155,12 @@ class ExpressionConversionContext(object):
             if self.functionContext.externalScopeVarExpr(self, name) is not None:
                 res = self.functionContext.externalScopeVarExpr(self, name)
 
+                # explicitly unwrap cells
+                if self.functionContext.isClosureVariable(name) and isinstance(res.expr_type, TypedCellWrapper):
+                    return res.convert_method_call("get", (), {})
+
                 varType = self.variableStates.currentType(name)
+
                 return self.recastVariableAsRestrictedType(res, varType)
 
             if self.variableStates.couldBeUninitialized(name):
@@ -1165,6 +1171,7 @@ class ExpressionConversionContext(object):
                         self.pushException(UnboundLocalError, "local variable '%s' referenced before assignment" % name)
 
             res = self.functionContext.localVariableExpression(self, name)
+
             if res is None:
                 return None
 

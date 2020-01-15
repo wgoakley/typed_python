@@ -87,6 +87,9 @@ class FunctionConversionContext(object):
     def isLocalVariable(self, name):
         return name in self.variablesBound or name in self.variablesAssigned
 
+    def isClosureVariable(self, name):
+        return name in self._closureVarnames
+
     def localVariableExpression(self, context: ExpressionConversionContext, name):
         """Return an TypedExpression reference for the local variable given by  'name'"""
         slot_type = self._varname_to_type[name]

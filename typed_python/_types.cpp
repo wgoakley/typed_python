@@ -775,39 +775,7 @@ PyObject *MakeFunctionType(PyObject* nullValue, PyObject* args) {
             }
             else {
                 for (long ix = 0; ix < PyTuple_Size(closure); ix++) {
-                    PyObject* cell = PyTuple_GetItem(closure, ix);
-                    if (!PyCell_Check(cell)) {
-                        PyErr_Format(PyExc_TypeError, "Function closure needs to all be cells.");
-                        return NULL;
-                    }
-
-                    PyObject* cellContents = PyCell_GET(cell);
-
-                    if (!cellContents) {
-                        PyErr_Format(
-                            PyExc_TypeError,
-                            "free variable '%s' referenced before assignment in enclosing scope",
-                            closureVarnames[ix].c_str()
-                        );
-                        return nullptr;
-                    }
-
-                    static PyObject* passingTypeFun = PyInstance::getInternalModuleMember("closurePassingType");
-
-                    PyObjectStealer passingType(PyObject_CallFunctionObjArgs(passingTypeFun, cellContents, NULL));
-
-                    if (!passingType) {
-                        return NULL;
-                    }
-
-                    Type* t = PyInstance::tryUnwrapPyInstanceToType(passingType);
-
-                    if (!t) {
-                        PyErr_Format(PyExc_TypeError, "Failed to determine a valid passing type.");
-                        return NULL;
-                    }
-
-                    closureVarTypes.push_back(t);
+                    closureVarTypes.push_back(PyCellType::Make());
                 }
             }
         }
@@ -1798,7 +1766,8 @@ PyObject *MakeAlternativeType(PyObject* nullValue, PyObject* args, PyObject* kwa
         std::string fieldName(PyUnicode_AsUTF8(key));
 
         if (PyFunction_Check(value)) {
-            functions[fieldName] = PyFunctionInstance::convertPythonObjectToFunction(key, value, true);
+            functions[fieldName] = PyFunctionInstance::convertPythonObjectToFunctionType(key, value, true);
+
             if (functions[fieldName] == nullptr) {
                 //error code is already set
                 return nullptr;
@@ -1834,7 +1803,7 @@ PyObject *MakeAlternativeType(PyObject* nullValue, PyObject* args, PyObject* kwa
 
     return incref((PyObject*)PyInstance::typeObj(
         ::Alternative::Make(name, definitions, functions)
-        ));
+    ));
 }
 
 PyObject *getTypePointer(PyObject* nullValue, PyObject* args) {

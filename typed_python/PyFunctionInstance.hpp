@@ -82,10 +82,16 @@ public:
 
     static PyObject* extractPyFun(PyObject* funcObj, PyObject* args, PyObject* kwargs);
 
+    static PyObject* closureForOverload(PyObject* funcObj, PyObject* args, PyObject* kwargs);
+
+    static PyObject* replaceClosure(PyObject* funcObj, PyObject* args, PyObject* kwargs);
+
+    static PyObject* replaceClosureType(PyObject* funcObj, PyObject* args, PyObject* kwargs);
+
     static PyObject* withEntrypoint(PyObject* funcObj, PyObject* args, PyObject* kwargs);
 
     static PyObject* resultTypeFor(PyObject* funcObj, PyObject* args, PyObject* kwargs);
 
-    static Function* convertPythonObjectToFunction(PyObject* name, PyObject *funcObj, bool assumeClosuresGlobal);
+    static Function* convertPythonObjectToFunctionType(PyObject* name, PyObject *funcObj, bool assumeClosuresGlobal);
 
 };

@@ -37,6 +37,10 @@ public:
         };
     }
 
+    static void mirrorTypeInformationIntoPyTypeConcrete(TypedCellType* t, PyTypeObject* pyType) {
+        PyDict_SetItemString(pyType->tp_dict, "HeldType", typePtrToPyTypeRepresentation(t->getHeldType()));
+    }
+
     static PyObject* set(PyObject* self, PyObject* args, PyObject* kwargs) {
         static const char *kwlist[] = {"value", NULL};
 

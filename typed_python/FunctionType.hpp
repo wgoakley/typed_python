@@ -190,6 +190,20 @@ public:
             }
         }
 
+        Overload replaceClosure(NamedTuple* newClosureType) const {
+            return Overload(
+                mFunctionCode,
+                mFunctionGlobals,
+                mFunctionDefaults,
+                mFunctionAnnotations,
+                mFunctionGlobalsInCells,
+                mFunctionClosureVarnames,
+                newClosureType,
+                mReturnType,
+                mArgs
+            );
+        }
+
         std::string toString() const {
             std::ostringstream str;
 

@@ -28,7 +28,7 @@ from typed_python._types import (
     Alternative, Value, serialize, deserialize, serializeStream, deserializeStream,
     PointerTo, Dict, validateSerializedObject, validateSerializedObjectStream, decodeSerializedObject,
     getOrSetTypeResolver, Set, Class, Type, PythonObjectOfType, BoundMethod,
-    TypedCell, PyCell
+    TypedCell
 )
 import typed_python._types as _types
 
@@ -50,5 +50,6 @@ NoneType = _types.NoneType()
 String = _types.String()
 Bytes = _types.Bytes()
 EmbeddedMessage = _types.EmbeddedMessage()
+PyCell = _types.PyCell()
 
 from typed_python.compiler.runtime import Entrypoint, Compiled, NotCompiled  # noqa
