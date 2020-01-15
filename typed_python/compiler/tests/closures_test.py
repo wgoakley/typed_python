@@ -14,7 +14,7 @@
 
 import unittest
 import time
-from typed_python import Function, NamedTuple, bytecount, ListOf, DisableCompiledCode
+from typed_python import Function, NamedTuple, bytecount, ListOf, DisableCompiledCode, TypedCell
 from typed_python.compiler.runtime import RuntimeEventVisitor, Entrypoint
 
 
@@ -332,6 +332,7 @@ class TestCompilingClosures(unittest.TestCase):
         # can assume the value doesn't change type and bind its value
         # directly in the closure.
         x = 10
+
         def f():
             return x
 
@@ -339,6 +340,7 @@ class TestCompilingClosures(unittest.TestCase):
         # than once in the function, we bind it with an untyped cell.
         # if we pass it into an entrypoint.
         y = 10
+
         def g():
             return y
         y = 20
@@ -364,6 +366,32 @@ class TestCompilingClosures(unittest.TestCase):
         # because we don't use 'f' before 'g' is bound, 'f' is able
         # to resolve its type
         self.assertEqual(f(), 10)
+
+    def test_typed_cell(self):
+        T = TypedCell(int)
+
+        t = T()
+
+        self.assertFalse(t.isSet())
+
+        with self.assertRaises(TypeError):
+            t.set("hi")
+
+        with self.assertRaises(Exception):
+            t.get()
+
+        t.set(10)
+
+        self.assertTrue(t.isSet())
+
+        self.assertEqual(t.get(), 10)
+
+        t.clear()
+
+        self.assertFalse(t.isSet())
+
+        with self.assertRaises(Exception):
+            t.get()
 
 
 # things in play:

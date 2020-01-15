@@ -26,4 +26,89 @@ public:
     static bool pyValCouldBeOfTypeConcrete(modeled_type* type, PyObject* pyRepresentation, bool isExplicit) {
         return false;
     }
+
+    static PyMethodDef* typeMethodsConcrete(Type* t) {
+        return new PyMethodDef [5] {
+            {"set", (PyCFunction)PyTypedCellInstance::set, METH_VARARGS | METH_KEYWORDS, NULL},
+            {"clear", (PyCFunction)PyTypedCellInstance::clear, METH_VARARGS | METH_KEYWORDS, NULL},
+            {"isSet", (PyCFunction)PyTypedCellInstance::isSet, METH_VARARGS | METH_KEYWORDS, NULL},
+            {"get", (PyCFunction)PyTypedCellInstance::get, METH_VARARGS | METH_KEYWORDS, NULL},
+            {NULL, NULL}
+        };
+    }
+
+    static PyObject* set(PyObject* self, PyObject* args, PyObject* kwargs) {
+        static const char *kwlist[] = {"value", NULL};
+
+        PyObject* value;
+
+        if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &value)) {
+            return NULL;
+        }
+
+        PyTypedCellInstance* self_w = (PyTypedCellInstance*)self;
+        TypedCellType* self_t = (TypedCellType*)self_w->type();
+
+        return translateExceptionToPyObject([&]() {
+            self_t->set(self_w->dataPtr(), [&](instance_ptr data) {
+                PyInstance::copyConstructFromPythonInstance(
+                    self_t->getHeldType(),
+                    data,
+                    value,
+                    true
+                );
+            });
+
+            return incref(Py_None);
+        });
+    }
+
+    static PyObject* clear(PyObject* self, PyObject* args, PyObject* kwargs) {
+        static const char *kwlist[] = {NULL};
+
+        if (!PyArg_ParseTupleAndKeywords(args, kwargs, "", (char**)kwlist)) {
+            return NULL;
+        }
+
+        PyTypedCellInstance* self_w = (PyTypedCellInstance*)self;
+        TypedCellType* self_t = (TypedCellType*)self_w->type();
+
+        self_t->clear(self_w->dataPtr());
+
+        return incref(Py_None);
+    }
+
+    static PyObject* isSet(PyObject* self, PyObject* args, PyObject* kwargs) {
+        static const char *kwlist[] = {NULL};
+
+        if (!PyArg_ParseTupleAndKeywords(args, kwargs, "", (char**)kwlist)) {
+            return NULL;
+        }
+
+        PyTypedCellInstance* self_w = (PyTypedCellInstance*)self;
+        TypedCellType* self_t = (TypedCellType*)self_w->type();
+
+        return incref(self_t->isSet(self_w->dataPtr()) ? Py_True : Py_False);
+    }
+
+    static PyObject* get(PyObject* self, PyObject* args, PyObject* kwargs) {
+        static const char *kwlist[] = {NULL};
+
+        if (!PyArg_ParseTupleAndKeywords(args, kwargs, "", (char**)kwlist)) {
+            return NULL;
+        }
+
+        PyTypedCellInstance* self_w = (PyTypedCellInstance*)self;
+        TypedCellType* self_t = (TypedCellType*)self_w->type();
+
+        if (!self_t->isSet(self_w->dataPtr())) {
+            PyErr_SetString(PyExc_RuntimeError, "Cell is empty");
+            return NULL;
+        }
+
+        return PyInstance::extractPythonObject(
+            self_t->get(self_w->dataPtr()),
+            self_t->getHeldType()
+        );
+    }
 };

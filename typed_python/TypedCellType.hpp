@@ -25,6 +25,7 @@ public:
     class layout {
     public:
         std::atomic<int64_t> refcount;
+        int64_t initialized;
         unsigned char data[];
     };
 
@@ -103,18 +104,20 @@ public:
     void initializeHandleAt(instance_ptr data) {
         getLayoutPtr(data) = (layout*)malloc(sizeof(layout) + mHeldType->bytecount());
         getLayoutPtr(data)->refcount = 1;
+        getLayoutPtr(data)->initialized = false;
     }
 
     void constructor(instance_ptr self) {
         initializeHandleAt(self);
-        mHeldType->constructor(getLayoutPtr(self)->data);
     }
 
     void destroy(instance_ptr self) {
         getLayoutPtr(self)->refcount--;
 
         if (getLayoutPtr(self)->refcount == 0) {
-            mHeldType->destroy(getLayoutPtr(self)->data);
+            if (getLayoutPtr(self)->initialized) {
+                mHeldType->destroy(getLayoutPtr(self)->data);
+            }
             free(getLayoutPtr(self));
         }
     }
@@ -131,6 +134,30 @@ public:
         getLayoutPtr(other)->refcount++;
         destroy(self);
         getLayoutPtr(self) = getLayoutPtr(other);
+    }
+
+    template<class initializer_fun>
+    void set(instance_ptr self, initializer_fun initializer) {
+        clear(self);
+
+        initializer((instance_ptr)getLayoutPtr(self)->data);
+
+        getLayoutPtr(self)->initialized = true;
+    }
+
+    void clear(instance_ptr self) {
+        if (getLayoutPtr(self)->initialized) {
+            mHeldType->destroy(getLayoutPtr(self)->data);
+            getLayoutPtr(self)->initialized = false;
+        }
+    }
+
+    bool isSet(instance_ptr self) {
+        return getLayoutPtr(self)->initialized;
+    }
+
+    instance_ptr get(instance_ptr self) {
+        return getLayoutPtr(self)->data;
     }
 
     static TypedCellType* Make(Type* t, TypedCellType* knownType = nullptr) {
