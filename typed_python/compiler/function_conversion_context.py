@@ -631,7 +631,10 @@ class FunctionConversionContext(object):
                 return subcontext.finalize(None, exceptionsTakeFrom=ast), False
 
             # Testing
-            subcontext.pushReturnValue(e, blockName="jtest")
+            if ast.line_number != 0 and ast.value.matches.Name:
+                subcontext.pushReturnValue(e, blockName="jtest")
+            else:
+                subcontext.pushReturnValue(e)
 
             return subcontext.finalize(None, exceptionsTakeFrom=ast), False
 

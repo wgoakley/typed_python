@@ -1281,7 +1281,7 @@ class FunctionConverter:
             if expr.name is not None:
                 finalBlock = self.builder.append_basic_block(self.teardown_handler.blockName() + "_resume")
 
-                if finally_result is not None:
+                if finally_result is not None and not self.builder.block.is_terminated:
                     self.builder.branch(finalBlock)
                 else:
                     # we didn't have a result, so the block we're on is already
