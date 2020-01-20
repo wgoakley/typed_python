@@ -1846,11 +1846,9 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 t = 0
                 for i in range(10):
                     t += i
-                    if i > 5:
-                        print("returning456")
+                    if i > x * 10:
                         return 456
             finally:
-                print("finally")
                 t = 123
             return t
 
@@ -1858,40 +1856,59 @@ class TestClassCompilationCompilation(unittest.TestCase):
             ret = "begin "
             try:
                 ret += "return "
-                ret += str(1/x)
+                ret += str(1/x) + " "
                 return ret
             except Exception:
                 ret += "except "
             finally:
                 ret += "finally "
-                return "but return this instead " + ret
+                return "But return this instead: " + ret
 
-        def f10a(x: int) -> str:
+        def f11(x: int) -> str:
             ret = "begin "
             try:
                 ret += "return "
-                ret += str(1/x)
+                ret += str(1/x) + " "
                 return ret
             except Exception:
                 ret += "except "
+                return "Exception " + ret
             finally:
                 ret += "finally "
 
-        def f10b():
-            try:
-                return
-            finally:
-                pass
-
-        def f10c(x: int):
+        def f12(x: int) -> str:
             ret = "begin "
             try:
                 ret += "return "
-                return
+                ret += str(1/(x-1)) + " " + str(1/x) + " "
+                return ret
+            except Exception:
+                ret += "except "
+                ret += str(1/x) + " "
+                return "Exception " + ret
             finally:
-                ret += "finally"
+                ret += "finally "
 
-        def f11(a: int, b: int, c: int, d: int) -> str:
+        def f13(x: int) -> int:
+            try:
+                return x
+            finally:
+                x += 1
+                return x
+
+        def f14(x: int) -> str:
+            try:
+                ret = "try "
+            except Exception:
+                ret = "exception "
+            else:
+                ret += "else "
+                return ret
+            finally:
+                if x == 0:
+                    return "override"
+
+        def g1(a: int, b: int, c: int, d: int) -> str:
             ret = "try "
             try:
                 ret += str(1/a) + " "
@@ -1924,12 +1941,13 @@ class TestClassCompilationCompilation(unittest.TestCase):
                     raise SyntaxError("syntax err")
             return ret
 
-        for f in [f10]:  # , f0, f1, f2, f3, f4, f5, f6, f7]:
+        # failing: [f8, f14]
+        for f in [f0, f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12, f13]:
             for v in [1, 0]:
                 r1 = result_or_exception_str(f, v)
                 r2 = result_or_exception_str(Compiled(f), v)
                 self.assertEqual(r1, r2)
-        for f in []:  # [f11]:
+        for f in [g1]:
             c_f = Compiled(f)
             for a in [4, 2, 1, 0]:
                 for b in [4, 2, 1, 0]:

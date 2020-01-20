@@ -298,9 +298,14 @@ class ExpressionConversionContext(object):
                 native_ast.Expression.Return(arg=None, blockName=blockName)
             )
         else:
-            self.pushTerminal(
-                native_ast.Expression.Return(arg=expression.nonref_expr, blockName=blockName)
-            )
+            if blockName is not None:
+                self.pushTerminal(
+                    native_ast.Expression.Return(arg=None, blockName=blockName)
+                )
+            else:
+                self.pushTerminal(
+                    native_ast.Expression.Return(arg=expression.nonref_expr)
+                )
 
     def pushTerminal(self, expression):
         """Push a native expression that does not return control flow."""
