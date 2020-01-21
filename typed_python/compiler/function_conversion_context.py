@@ -725,7 +725,7 @@ class FunctionConversionContext(object):
                     if "loop_break" in true.returnTargets():
                         isWhileTrue = False
 
-                false, false_returns = self.convert_statement_list_ast(ast.orelse, variableStatesFalse, return_to=return_to, in_loop=True)
+                false, false_returns = self.convert_statement_list_ast(ast.orelse, variableStatesFalse, return_to=return_to)
 
                 variableStates.becomeMerge(
                     variableStatesTrue if true_returns else None,
@@ -896,7 +896,7 @@ class FunctionConversionContext(object):
                     if not thisOneReturns:
                         return iterator_setup_context.finalize(None, exceptionsTakeFrom=ast).withReturnTargetName("loop_break"), False
 
-                thisOne, thisOneReturns = self.convert_statement_list_ast(ast.orelse, variableStates, return_to=return_to, in_loop=True)
+                thisOne, thisOneReturns = self.convert_statement_list_ast(ast.orelse, variableStates, return_to=return_to)
 
                 iterator_setup_context.pushEffect(thisOne)
 
@@ -1192,7 +1192,7 @@ class FunctionConversionContext(object):
     def convert_function_body(self, statements, variableStates: FunctionStackState):
         return self.convert_statement_list_ast(statements, variableStates, toplevel=True)
 
-    def convert_statement_list_ast(self, statements, variableStates: FunctionStackState, toplevel=False, return_to=None):
+    def convert_statement_list_ast(self, statements, variableStates: FunctionStackState, toplevel=False, return_to=None, in_loop=False):
         """Convert a sequence of statements to a native expression.
 
         After executing this statement, variableStates will contain the known states of the
@@ -1212,7 +1212,7 @@ class FunctionConversionContext(object):
         """
         exprAndReturns = []
         for s in statements:
-            expr, controlFlowReturns = self.convert_statement_ast(s, variableStates, return_to=return_to)
+            expr, controlFlowReturns = self.convert_statement_ast(s, variableStates, return_to=return_to, in_loop=in_loop)
 
             exprAndReturns.append((expr, controlFlowReturns))
 
