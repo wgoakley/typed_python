@@ -1830,12 +1830,11 @@ class TestClassCompilationCompilation(unittest.TestCase):
         # TODO: support finally in situation where control flow exits try block
         def f8(x: int) -> str:
             ret = "start "
-            i = 0
-            for i in range(10):
+            for i in [0, 1]:
                 ret += str(i) + " "
                 if i > x:
                     try:
-                        print("TRY")
+                        ret += "try"
                         break
                     finally:
                         ret += "finally"
@@ -1908,6 +1907,66 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 if x == 0:
                     return "override"
 
+        def f15(x: int) -> str:
+            ret = "start "
+            for i in [0, 1]:
+                ret += str(i) + " "
+                if i > x:
+                    try:
+                        ret += "try"
+                        break
+                    finally:
+                        return "override"
+            return ret
+
+        def f16(x: int) -> str:
+            ret = "start "
+            for i in [0, 1]:
+                ret += str(i) + " "
+                if i > x:
+                    try:
+                        ret += "try"
+                        return "try"
+                    finally:
+                        break
+            return ret
+
+        def f17(x: int) -> str:
+            ret = "start "
+            for i in [0, 1]:
+                ret += str(i) + " "
+                if i > x:
+                    try:
+                        ret += "try"
+                        continue
+                    finally:
+                        return "override"
+            return ret
+
+        def f18(x: int) -> str:
+            ret = "start "
+            for i in [0, 1]:
+                ret += str(i) + " "
+                if i > x:
+                    try:
+                        ret += "try"
+                        return "try"
+                    finally:
+                        break
+            return ret
+
+        def f19(x: int) -> str:
+            ret = "start "
+            for i in [0, 1]:
+                ret += str(i) + " "
+                if i > x:
+                    try:
+                        ret += "try"
+                        ret += str(1/x)
+                    finally:
+                        break
+            return ret
+
         def g1(a: int, b: int, c: int, d: int) -> str:
             ret = "try "
             try:
@@ -1941,11 +2000,14 @@ class TestClassCompilationCompilation(unittest.TestCase):
                     raise SyntaxError("syntax err")
             return ret
 
-        # failing: [f8, f14]
-        for f in [f0, f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12, f13]:
+        # failures: [f14, f16, f18, f19]
+        for f in [f0, f1, f2, f3, f4, f5, f6, f7, f8, f10, f11, f12, f13, f15, f17]:
+            c_f = Compiled(f)
             for v in [1, 0]:
                 r1 = result_or_exception_str(f, v)
-                r2 = result_or_exception_str(Compiled(f), v)
+                r2 = result_or_exception_str(c_f, v)
+                if r1 != r2:
+                    print("mismatch")
                 self.assertEqual(r1, r2)
         for f in [g1]:
             c_f = Compiled(f)

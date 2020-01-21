@@ -631,6 +631,7 @@ class FunctionConversionContext(object):
                 return subcontext.finalize(None, exceptionsTakeFrom=ast), False
 
             if return_to is not None:
+                self.assignToLocalVariable(".control_flow", subcontext.constant(3), variableStates)
                 self.assignToLocalVariable(".return_value", e, variableStates)
 
             subcontext.pushReturnValue(e, blockName=return_to)
@@ -833,13 +834,50 @@ class FunctionConversionContext(object):
             if final:
                 complete = complete >> final_context.finalize(None, exceptionsTakeFrom=ast)
 
-            if self.isLocalVariable(".return_value"):
-                return_context = ExpressionConversionContext(self, variableStates)
-                return_context.pushReturnValue(self.localVariableExpression(return_context, ".return_value"))
-                complete = complete >> native_ast.Expression.Branch(
-                    cond=return_context.isInitializedVarExpr(".return_value").nonref_expr,
-                    true=return_context.finalize(None, exceptionsTakeFrom=ast) >> native_ast.nullExpr
-                )
+            if self.isLocalVariable(".control_flow"):
+                if self.isLocalVariable(".return_value"):
+                    return_context = ExpressionConversionContext(self, variableStates)
+                    return_context.pushReturnValue(self.localVariableExpression(body_context, ".return_value"))
+                    complete = complete >> native_ast.Expression.Branch(
+                        cond=body_context.isInitializedVarExpr(".control_flow").nonref_expr,
+                        true=native_ast.Expression.Branch(
+                            cond=self.localVariableExpression(body_context, ".control_flow").nonref_expr.eq(3),
+                            true=return_context.finalize(None, exceptionsTakeFrom=ast) >> native_ast.nullExpr
+                        )
+                    )
+                if self.isLocalVariable(".break"):
+                    complete = complete >> native_ast.Expression.Branch(
+                        cond=body_context.isInitializedVarExpr(".break").nonref_expr,
+                        true=native_ast.Expression.Branch(
+                            cond=self.localVariableExpression(body_context, ".control_flow").nonref_expr.eq(1),
+                            true=native_ast.Expression.Return(blockName="loop_break") >> native_ast.nullExpr
+                        )
+                    )
+                if self.isLocalVariable(".continue"):
+                    complete = complete >> native_ast.Expression.Branch(
+                        cond=body_context.isInitializedVarExpr(".continue").nonref_expr,
+                        true=native_ast.Expression.Branch(
+                            cond=self.localVariableExpression(body_context, ".control_flow").nonref_expr.eq(2),
+                            true=native_ast.Expression.Return(blockName="loop_continue") >> native_ast.nullExpr
+                        )
+                    )
+
+                # complete = complete >> native_ast.Expression.Branch(
+                #     cond=body_context.isInitializedVarExpr(".control_flow").nonref_expr,
+                #     true=native_ast.Expression.Branch(
+                #         cond=self.localVariableExpression(body_context, ".control_flow").nonref_expr.eq(1),
+                #         true=native_ast.Expression.Return(blockName="loop_break") >> native_ast.nullExpr,
+                #         false=native_ast.Expression.Branch(
+                #             cond=self.localVariableExpression(body_context, ".control_flow").nonref_expr.eq(2),
+                #             true=native_ast.Expression.Return(blockName="loop_continue") >> native_ast.nullExpr,
+                #             false =return_context.finalize(None, exceptionsTakeFrom=ast) >> native_ast.nullExpr
+                #          ) >> native_ast.nullExpr
+                #     ) >> native_ast.nullExpr
+                # )
+            # complete = complete >> native_ast.Expression.Branch(
+            #     cond=return_context.isInitializedVarExpr(".return_value").nonref_expr,
+            #     true=return_context.finalize(None, exceptionsTakeFrom=ast) >> native_ast.nullExpr
+            # )
 
             complete = complete >> native_ast.Expression.Branch(
                 cond=exceptionUnhandled.load(),
@@ -1056,17 +1094,23 @@ class FunctionConversionContext(object):
             # for the moment, we have to pretend as if the 'break' did return control flow,
             # or else a while loop that always ends in break/continue will look like it doesn't
             # return, when in fact it does.
-            return native_ast.Expression.Return(
-                blockName="loop_break"
-            ), True
+            if return_to is not None:
+                self.assignToLocalVariable(".control_flow", ExpressionConversionContext(self, variableStates).constant(1), variableStates)
+                self.assignToLocalVariable(".break", ExpressionConversionContext(self, variableStates).constant(True), variableStates)
+                return native_ast.Expression.Return(blockName=return_to), True
+            else:
+                return native_ast.Expression.Return(blockName="loop_break"), True
 
         if ast.matches.Continue:
             # for the moment, we have to pretend as if the 'continue' did return control flow,
             # or else a while loop that always ends in break/continue will look like it doesn't
             # return, when in fact it does.
-            return native_ast.Expression.Return(
-                blockName="loop_continue"
-            ), True
+            if return_to is not None:
+                self.assignToLocalVariable(".control_flow", ExpressionConversionContext(self, variableStates).constant(2), variableStates)
+                self.assignToLocalVariable(".continue", ExpressionConversionContext(self, variableStates).constant(True), variableStates)
+                return native_ast.Expression.Return(blockName=return_to), True
+            else:
+                return native_ast.Expression.Return(blockName="loop_continue"), True
 
         if ast.matches.Assert:
             expr_context = ExpressionConversionContext(self, variableStates)
