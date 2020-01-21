@@ -2006,8 +2006,6 @@ class TestClassCompilationCompilation(unittest.TestCase):
             for v in [1, 0]:
                 r1 = result_or_exception_str(f, v)
                 r2 = result_or_exception_str(c_f, v)
-                if r1 != r2:
-                    print("mismatch")
                 self.assertEqual(r1, r2)
         for f in [g1]:
             c_f = Compiled(f)
