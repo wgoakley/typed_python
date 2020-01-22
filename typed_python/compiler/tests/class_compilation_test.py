@@ -1835,7 +1835,8 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 if i > x:
                     try:
                         ret += "try"
-                        break
+                        if x < 10:
+                            break
                     finally:
                         ret += "finally"
             return ret
@@ -1908,6 +1909,20 @@ class TestClassCompilationCompilation(unittest.TestCase):
                     return "override"
 
         def f15(x: int) -> str:
+            try:
+                ret = "try "
+                if x < 10:
+                    return ret
+            except Exception:
+                ret = "exception "
+            else:
+                ret += "else "
+                return ret
+            finally:
+                if x == 0:
+                    return "override"
+
+        def f16(x: int) -> str:
             ret = "start "
             for i in [0, 1]:
                 ret += str(i) + " "
@@ -1917,18 +1932,6 @@ class TestClassCompilationCompilation(unittest.TestCase):
                         break
                     finally:
                         return "override"
-            return ret
-
-        def f16(x: int) -> str:
-            ret = "start "
-            for i in [0, 1]:
-                ret += str(i) + " "
-                if i > x:
-                    try:
-                        ret += "try"
-                        return "try"
-                    finally:
-                        break
             return ret
 
         def f17(x: int) -> str:
@@ -1938,12 +1941,29 @@ class TestClassCompilationCompilation(unittest.TestCase):
                 if i > x:
                     try:
                         ret += "try"
-                        continue
+                        if x < 10:
+                            return "try"
                     finally:
-                        return "override"
+                        if x < 10:
+                            break
             return ret
 
         def f18(x: int) -> str:
+            ret = "start "
+            for i in [0, 1, 2]:
+                ret += str(i) + " "
+                try:
+                    ret += "try "
+                    if i == 0:
+                        continue
+                    ret += "looping "
+                finally:
+                    ret += "finally "
+                    if x == 1:
+                        return "override "
+            return ret
+
+        def f19(x: int) -> str:
             ret = "start "
             for i in [0, 1]:
                 ret += str(i) + " "
@@ -1955,7 +1975,7 @@ class TestClassCompilationCompilation(unittest.TestCase):
                         break
             return ret
 
-        def f19(x: int) -> str:
+        def f20(x: int) -> str:
             ret = "start "
             for i in [0, 1]:
                 ret += str(i) + " "
@@ -1968,13 +1988,15 @@ class TestClassCompilationCompilation(unittest.TestCase):
             return ret
 
         def g1(a: int, b: int, c: int, d: int) -> str:
-            ret = "try "
+            ret = "start "
             try:
                 ret += str(1/a) + " "
                 if a == 1:
                     ret += a
                 elif a == 2:
                     raise NotImplementedError("in body")
+                elif a == 8:
+                    return ret
             except ArithmeticError:
                 ret += "catch1 "
                 ret += str(1/b) + " "
@@ -1982,40 +2004,86 @@ class TestClassCompilationCompilation(unittest.TestCase):
                     ret += b
                 elif b == 2:
                     raise NotImplementedError("in handler")
+                elif b == 8:
+                    return ret
                 # TODO: The compiled code will have type(ex) = ArithmeticError instead of ZeroDivisionError.
                 # TODO: Also, there are variations between interpreted and compiled code in the string representations of errors.
             except TypeError:
                 ret += "catch2 "
                 ret += str(1/b) + " "
+                if b == 8:
+                    return ret
             except Exception:
                 ret += "catchdefault "
                 ret += str(1/b) + " "
+                if b == 8:
+                    return ret
             else:
                 ret += "else "
                 if c == 0:
                     raise MemoryError("out of memory")
+                elif c == 8:
+                    return ret
             finally:
                 ret += "finally "
                 if d == 0:
                     raise SyntaxError("syntax err")
+                elif d == 8:
+                    return ret
+            ret += "end "
             return ret
 
-        # failures: [f14, f16, f18, f19]
-        for f in [f0, f1, f2, f3, f4, f5, f6, f7, f8, f10, f11, f12, f13, f15, f17]:
+        def g2(a: int, b: int, c: int, d: int) -> str:
+            ret = "start "
+            for i in [1, 2, 3]:
+                try:
+                    ret += str(1/a) + " "
+                    if a == 1:
+                        break
+                    elif a == 2:
+                        continue
+                    elif a == 8:
+                        ret += "return within try "
+                        return ret
+                    ret += "x "
+                except ZeroDivisionError:
+                    ret += str(1/b) + " "
+                    if b == 1:
+                        break
+                    elif b == 2:
+                        continue
+                    elif b == 8:
+                        ret += "return within except "
+                        return ret
+                else:
+                    ret += str(1/c) + " "
+                    if c == 8:
+                        ret += "return within else "
+                        return ret
+                finally:
+                    ret += str(1/d) + " "
+                    if d == 8:
+                        ret += "return within finally "
+                        return ret
+            ret += "end"
+            return ret
+
+        # failures: [f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20]
+        for f in [f0, f1, f2, f3, f4, f5, f6, f7, f8, f9]:
             c_f = Compiled(f)
             for v in [1, 0]:
                 r1 = result_or_exception_str(f, v)
                 r2 = result_or_exception_str(c_f, v)
-                self.assertEqual(r1, r2)
+                self.assertEqual(r1, r2, (str(f), v))
         for f in [g1]:
             c_f = Compiled(f)
-            for a in [4, 2, 1, 0]:
-                for b in [4, 2, 1, 0]:
-                    for c in [1, 0]:
-                        for d in [1, 0]:
+            for a in [4, 2, 1, 0, 8]:
+                for b in [4, 2, 1, 0, 8]:
+                    for c in [1, 0, 8]:
+                        for d in [1, 0, 8]:
                             r1 = result_or_exception(f, a, b, c, d)
                             r2 = result_or_exception(c_f, a, b, c, d)
-                            self.assertEqual(r1, r2)
+                            self.assertEqual(r1, r2, (str(f), a, b, c, d))
 
     @pytest.mark.skip(reason="not supported")
     def test_context_manager(self):
